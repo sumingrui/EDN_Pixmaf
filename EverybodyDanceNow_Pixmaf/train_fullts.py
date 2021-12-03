@@ -61,7 +61,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             cond_zeros = torch.zeros(data['label'].size()).float()
 
             losses, generated = model(Variable(data['label']), Variable(data['next_label']), Variable(data['image']), \
-                    Variable(data['next_image']), Variable(data['face_coords']), Variable(cond_zeros), infer=True)
+                    Variable(data['next_image']), Variable(data['face_coords']), Variable(cond_zeros), \
+                    data['other_params'], data['next_other_params'], infer=True)
 
             # sum per device losses
             losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]

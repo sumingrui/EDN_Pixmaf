@@ -158,6 +158,7 @@ class PixMAF(nn.Module):
         # 特征提取
         # EDN下采样backbone [-1, 1024, 16, 32]
         # TODO 是否加入pretrained选项
+        # TODO 把参数放到init中去
         self.feature_extractor = Down_Sampling(input_nc=6, ngf=64, n_downsampling=4, n_blocks=9)
 
         # deconv layers
@@ -231,6 +232,7 @@ class PixMAF(nn.Module):
     def forward(self, x, bbox, J_regressor=None):
 
         batch_size = x.shape[0]
+        bbox = bbox[0]
 
         # spatial features and global features
         # [-1, 1024, 16, 32]
@@ -238,7 +240,7 @@ class PixMAF(nn.Module):
         # print('feature_extractor:', s_feat.shape)
 
         deconv_blocks = [self.deconv_layers[0:3], self.deconv_layers[3:6], self.deconv_layers[6:9], self.deconv_layers[9:12]]
-        last_block = self.deconv_layers[12]
+        last_block = self.deconv_layers[12:15]
         out_list = {}
 
         # initial parameters

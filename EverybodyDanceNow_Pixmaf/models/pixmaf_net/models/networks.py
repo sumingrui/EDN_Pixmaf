@@ -111,7 +111,7 @@ def Up_Sampling(output_nc =3, ngf=64, n_downsampling=4, norm_layer=get_norm_laye
         mult = 2**(n_downsampling - i)
         model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1),
                     norm_layer(int(ngf * mult / 2)), activation] 
-        model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
+    model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
     model = nn.Sequential(*model)
     return model       
 

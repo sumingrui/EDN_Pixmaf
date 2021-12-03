@@ -174,7 +174,8 @@ class Pix2PixHDModel(BaseModel):
         else:
             return self.netDface.forward(input_concat)
 
-    def forward(self, label, next_label, image, next_image, face_coords, zeroshere, infer=False):
+    def forward(self, label, next_label, image, next_image, face_coords, zeroshere, \
+                other_params, next_other_params, infer=False):
         # Encode Inputs
         input_label, real_image, next_label, next_image, zeroshere = self.encode_input(label, image, \
                      next_label=next_label, next_image=next_image, zeroshere=zeroshere)
@@ -198,8 +199,8 @@ class Pix2PixHDModel(BaseModel):
             I_0 = initial_I_0.clone()
             I_0[:, :, miny:maxy, minx:maxx] = initial_I_0[:, :, miny:maxy, minx:maxx] + face_residual_0
         else:
-            I_0 = self.netG.forward(input_concat)
-
+            Outlist_0, _ = self.netG.forward(input_concat,other_params['bboxes'])
+            I_0 = Outlist_0['GlobalGenerator']
 
         input_concat1 = torch.cat((next_label, I_0), dim=1)
 
@@ -212,7 +213,8 @@ class Pix2PixHDModel(BaseModel):
             I_1 = initial_I_1.clone()
             I_1[:, :, miny:maxy, minx:maxx] = initial_I_1[:, :, miny:maxy, minx:maxx] + face_residual_1
         else:
-            I_1 = self.netG.forward(input_concat1)
+            Outlist_1, _ = self.netG.forward(input_concat1,next_other_params['bboxes'])
+            I_1 = Outlist_1['GlobalGenerator']
 
         loss_D_fake_face = loss_D_real_face = loss_G_GAN_face = 0
         fake_face_0 = fake_face_1 = real_face_0 = real_face_1 = 0
