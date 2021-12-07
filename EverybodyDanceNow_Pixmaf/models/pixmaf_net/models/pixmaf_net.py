@@ -248,6 +248,7 @@ class PixMAF(nn.Module):
         # by generating initial mesh the beforehand: smpl_output = self.init_smpl
         if cfg.MODEL.PixMAF.USE_PIXMAF:
             assert cfg.MODEL.PixMAF.N_ITER == 4
+            # TODO: 使用VIBE初始化
             smpl_output = self.regressor[0].forward_init(s_feat, J_regressor=J_regressor)
             out_list['smpl_out'] = [smpl_output]
             out_list['silhouette'] = []
