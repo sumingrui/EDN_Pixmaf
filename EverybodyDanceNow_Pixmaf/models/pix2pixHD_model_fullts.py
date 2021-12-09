@@ -110,7 +110,7 @@ class Pix2PixHDModel(BaseModel):
             else:
                 if opt.niter_fix_main == 0:
                     params += list(self.netG.parameters())
-
+            # 选择更新的参数
             self.optimizer_G = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))                            
 
             # optimizer D
@@ -256,10 +256,12 @@ class Pix2PixHDModel(BaseModel):
                 face_residual = torch.cat((face_residual_0, face_residual_1), dim=3)
 
         # Fake Detection and Loss
+        # I_0, I_1 detach 不管G，只看D
         pred_fake_pool = self.discriminate_4(input_label, next_label, I_0, I_1, use_pool=True)
         loss_D_fake = self.criterionGAN(pred_fake_pool, False)        
 
-        # Real Detection and Loss        
+        # Real Detection and Loss       
+        # real_image, next_image detach
         pred_real = self.discriminate_4(input_label, next_label, real_image, next_image)
         loss_D_real = self.criterionGAN(pred_real, True)
 

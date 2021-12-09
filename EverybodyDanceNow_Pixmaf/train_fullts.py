@@ -12,7 +12,12 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
+from models.pixmaf_net.core.cfgs import cfg,parse_args_extend
+
 opt = TrainOptions().parse()
+parse_args_extend(opt)
+# TODO 准备log文件
+
 iter_path = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')
 if opt.continue_train:
     try:

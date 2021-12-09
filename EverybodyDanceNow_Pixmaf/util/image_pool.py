@@ -4,12 +4,14 @@ import torch
 from torch.autograd import Variable
 class ImagePool():
     def __init__(self, pool_size):
+        # 0
         self.pool_size = pool_size
         if self.pool_size > 0:
             self.num_imgs = 0
             self.images = []
 
     def query(self, images):
+        # 走这里
         if self.pool_size == 0:
             return images
         return_images = []

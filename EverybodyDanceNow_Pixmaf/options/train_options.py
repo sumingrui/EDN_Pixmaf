@@ -39,4 +39,9 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
         self.parser.add_argument('--lambda_F', type=float, default=1.0, help='weight flow loss')
 
+        #for Pixmaf
+        pixmaf = self.parser.add_argument_group('pixmaf')
+        pixmaf.add_argument('--log_dir', default='logs', help='Directory to store logs')
+        pixmaf.add_argument('--cfg_file', type=str, default='./configs/pixmaf_config.yaml', help='config file path for PixMAF.')
+
         self.isTrain = True
