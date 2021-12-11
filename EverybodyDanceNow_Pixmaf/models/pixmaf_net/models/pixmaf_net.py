@@ -224,15 +224,15 @@ class PixMAF(nn.Module):
         size = torch.Size((1, feature.shape[1], int(bbox[2]*scale/h*feature.shape[2]), int(bbox[2]*scale/h*feature.shape[2])))
         grid = F.affine_grid(theta.unsqueeze(0), size)
         output = F.grid_sample(feature, grid, mode='bilinear', padding_mode='zeros')
-        # TODO need normalization?
+        # TODO need normalization? 暂时不用
 
         return output
 
 
-    def forward(self, x, bbox, J_regressor=None):
+    def forward(self, x, init_params, J_regressor=None):
 
         batch_size = x.shape[0]
-        bbox = bbox[0]
+        bbox = init_params['bboxes'][0]
 
         # spatial features and global features
         # [-1, 1024, 16, 32]
@@ -248,8 +248,9 @@ class PixMAF(nn.Module):
         # by generating initial mesh the beforehand: smpl_output = self.init_smpl
         if cfg.MODEL.PixMAF.USE_PIXMAF:
             assert cfg.MODEL.PixMAF.N_ITER == 4
-            # TODO: 使用VIBE初始化
-            smpl_output = self.regressor[0].forward_init(s_feat, J_regressor=J_regressor)
+            # 使用VIBE初始化
+            smpl_output = self.regressor[0].forward_init(s_feat, init_pose=init_params['pose'], init_shape=init_params['betas'], \
+                                                            init_cam=init_params['pred_cam'], n_iter=1, J_regressor=J_regressor)
             out_list['smpl_out'] = [smpl_output]
             out_list['silhouette'] = []
             
@@ -273,7 +274,7 @@ class PixMAF(nn.Module):
                 pred_shape = pred_shape.detach()
                 pred_pose = pred_pose.detach()
 
-                # 对s_feat_i进行修剪 TODO
+                # 对s_feat_i进行修剪 TODO 只是一种尝试
                 s_feat_i = self._crop_feature(s_feat_i, bbox)
 
                 self.maf_extractor[rf_i].im_feat = s_feat_i

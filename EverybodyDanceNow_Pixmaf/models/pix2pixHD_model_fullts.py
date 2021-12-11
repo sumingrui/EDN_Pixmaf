@@ -87,9 +87,13 @@ class Pix2PixHDModel(BaseModel):
                 self.criterionVGG = networks.VGGLoss(self.gpu_ids)
             if opt.use_l1:
                 self.criterionL1 = torch.nn.L1Loss()
+
+            # loss for pixmaf
+            self.criterionPixmaf = networks.Pixmaf_Loss()
         
             # Loss names
-            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'D_real', 'D_fake', 'G_GANface', 'D_realface', 'D_fakeface']
+            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP'\
+                                'D_real', 'D_fake', 'G_GANface', 'D_realface', 'D_fakeface']
 
             # initialize optimizers
             # optimizer G
@@ -173,6 +177,8 @@ class Pix2PixHDModel(BaseModel):
             return self.netDface.forward(fake_query)
         else:
             return self.netDface.forward(input_concat)
+    
+
 
     def forward(self, label, next_label, image, next_image, face_coords, zeroshere, \
                 other_params, next_other_params, infer=False):
@@ -199,7 +205,7 @@ class Pix2PixHDModel(BaseModel):
             I_0 = initial_I_0.clone()
             I_0[:, :, miny:maxy, minx:maxx] = initial_I_0[:, :, miny:maxy, minx:maxx] + face_residual_0
         else:
-            Outlist_0, _ = self.netG.forward(input_concat,other_params['bboxes'])
+            Outlist_0, _ = self.netG.forward(input_concat,other_params)
             I_0 = Outlist_0['GlobalGenerator']
 
         input_concat1 = torch.cat((next_label, I_0), dim=1)
@@ -213,7 +219,7 @@ class Pix2PixHDModel(BaseModel):
             I_1 = initial_I_1.clone()
             I_1[:, :, miny:maxy, minx:maxx] = initial_I_1[:, :, miny:maxy, minx:maxx] + face_residual_1
         else:
-            Outlist_1, _ = self.netG.forward(input_concat1,next_other_params['bboxes'])
+            Outlist_1, _ = self.netG.forward(input_concat1,next_other_params)
             I_1 = Outlist_1['GlobalGenerator']
 
         loss_D_fake_face = loss_D_real_face = loss_G_GAN_face = 0
@@ -293,9 +299,16 @@ class Pix2PixHDModel(BaseModel):
 
         if self.opt.use_l1:
             loss_G_VGG += (self.criterionL1(I_1, next_image)) * self.opt.lambda_A
+
+        # 加入2D keypoints loss
+        loss_G_2DKP = 0
+        if self.opt.use_pixmaf:
+            pass
+
         
         # Only return the fake_B image if necessary to save BW
-        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_D_real, loss_D_fake, \
+        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, \
+                    loss_D_real, loss_D_fake, \
                     loss_G_GAN_face, loss_D_real_face,  loss_D_fake_face], \
                         None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0] ]
 

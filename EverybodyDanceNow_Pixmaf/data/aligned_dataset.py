@@ -24,7 +24,6 @@ class AlignedDataset(BaseDataset):
             self.dir_image = os.path.join(opt.dataroot, opt.phase + '_img')  
             self.image_paths = sorted(make_dataset(self.dir_image))
 
-            # TODO: 制作纯bbox pkl file
             self.dir_vibe = os.path.join(opt.dataroot, 'train_vibe.pkl')  
             self.vibe_results = joblib.load(self.dir_vibe)
 
@@ -60,6 +59,16 @@ class AlignedDataset(BaseDataset):
             # 添加bbox
             other_params['bboxes'] = self.vibe_results[1]['bboxes'][index] #(4,)
 
+            other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] #(3,)
+            other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
+            other_params['pose'] = self.vibe_results[1]['pose'][index] #(72,)
+            other_params['betas'] = self.vibe_results[1]['betas'][index] #(10,)
+            # unused
+            other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
+            other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
+            other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
+            other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
+
         is_next = index < len(self) - 1
         if self.opt.gestures:
             is_next = is_next and (index % 64 != 63)
@@ -82,6 +91,16 @@ class AlignedDataset(BaseDataset):
 
                 # 添加bbox
                 next_other_params['bboxes'] = self.vibe_results[1]['bboxes'][index+1] #(4,)
+
+                next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] #(3,)
+                next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
+                next_other_params['pose'] = self.vibe_results[1]['pose'][index] #(72,)
+                next_other_params['betas'] = self.vibe_results[1]['betas'][index] #(10,)
+                # unused
+                next_other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
+                next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
+                next_other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
+                next_other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
 
         """ If using the face generator and/or face discriminator """
         if self.opt.face_discrim or self.opt.face_generator:

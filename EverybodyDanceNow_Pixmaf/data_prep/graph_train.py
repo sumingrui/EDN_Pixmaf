@@ -87,6 +87,8 @@ frames = sorted(os.listdir(frames_dir))
 print frames
 print('----------------- All Loaded -----------------')
 
+pose_data = []
+
 while n <= end:
 	print n
 	framesmadestr = '%06d' % numframesmade
@@ -99,6 +101,14 @@ while n <= end:
 
 	### try yaml
 	posepts = readkeypointsfile(key_name + "_pose")
+	
+	# 添加构建数据集函数
+	pt_array = np.array(posepts).reshape(25,3)
+	print(pt_array)
+	pt_array[:,0] = pt_array[:,0]*1024./1920.
+	pt_array[:,1] = pt_array[:,1]*512./1080.
+	print(pt_array)
+
 	facepts = readkeypointsfile(key_name + "_face")
 	r_handpts = readkeypointsfile(key_name + "_hand_right")
 	l_handpts = readkeypointsfile(key_name + "_hand_left")

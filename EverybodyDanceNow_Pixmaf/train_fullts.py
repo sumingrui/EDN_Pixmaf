@@ -75,7 +75,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             # calculate final loss scalar
             loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
-            loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface']
+            loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface'] + loss_dict['G_2DKP']
 
             ############### Backward Pass ####################
             # update generator weights
@@ -92,6 +92,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             ############## Display results and errors ##########
             ### print out errors
+            ### 100 epochs打印一次
             if total_steps % opt.print_freq == 0:
                 errors = {}
                 if torch.__version__[0] == '1':
