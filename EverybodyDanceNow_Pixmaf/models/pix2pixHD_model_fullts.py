@@ -10,6 +10,9 @@ from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
 
+# Pixmaf
+from .pixmaf_net.models.networks import Pixmaf_Loss
+
 class Pix2PixHDModel(BaseModel):
     def name(self):
         return 'Pix2PixHDModel'
@@ -89,10 +92,10 @@ class Pix2PixHDModel(BaseModel):
                 self.criterionL1 = torch.nn.L1Loss()
 
             # loss for pixmaf
-            self.criterionPixmaf = networks.Pixmaf_Loss()
+            self.criterionPixmaf = Pixmaf_Loss()
         
             # Loss names
-            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP'\
+            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', \
                                 'D_real', 'D_fake', 'G_GANface', 'D_realface', 'D_fakeface']
 
             # initialize optimizers
@@ -113,6 +116,8 @@ class Pix2PixHDModel(BaseModel):
                 params = list(self.faceGen.parameters())
             else:
                 if opt.niter_fix_main == 0:
+                    # TODO 这里有没有问题
+                    pass
                     params += list(self.netG.parameters())
             # 选择更新的参数
             self.optimizer_G = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))                            
@@ -129,7 +134,8 @@ class Pix2PixHDModel(BaseModel):
 
             self.optimizer_D = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
-    def encode_input(self, label_map, real_image=None, next_label=None, next_image=None, zeroshere=None, infer=False):
+    def encode_input(self, label_map, real_image=None, next_label=None, next_image=None, zeroshere=None, \
+                        other_params=None, next_other_params=None, infer=False):
 
         input_label = label_map.data.float().cuda()
         input_label = Variable(input_label, volatile=infer)
@@ -150,9 +156,16 @@ class Pix2PixHDModel(BaseModel):
         if zeroshere is not None:
             zeroshere = zeroshere.data.float().cuda()
             zeroshere = Variable(zeroshere, volatile=infer)
+        
+        if other_params is not None:
+            for k in other_params.keys():
+                other_params[k] = Variable(other_params[k].data.float().cuda())
 
+        if next_other_params is not None:
+            for k in next_other_params.keys():
+                next_other_params[k] = Variable(next_other_params[k].data.float().cuda())
 
-        return input_label, real_image, next_label, next_image, zeroshere
+        return input_label, real_image, next_label, next_image, zeroshere, other_params, next_other_params
 
     def discriminate(self, input_label, test_image, use_pool=False):
         input_concat = torch.cat((input_label, test_image.detach()), dim=1)
@@ -179,12 +192,12 @@ class Pix2PixHDModel(BaseModel):
             return self.netDface.forward(input_concat)
     
 
-
     def forward(self, label, next_label, image, next_image, face_coords, zeroshere, \
                 other_params, next_other_params, infer=False):
         # Encode Inputs
-        input_label, real_image, next_label, next_image, zeroshere = self.encode_input(label, image, \
-                     next_label=next_label, next_image=next_image, zeroshere=zeroshere)
+        input_label, real_image, next_label, next_image, zeroshere, other_params, next_other_params = self.encode_input(label, image, \
+                     next_label=next_label, next_image=next_image, zeroshere=zeroshere, \
+                     other_params = other_params, next_other_params = next_other_params)
         if self.opt.face_discrim:
             miny = face_coords.data[0][0]
             maxy = face_coords.data[0][1]
@@ -205,8 +218,9 @@ class Pix2PixHDModel(BaseModel):
             I_0 = initial_I_0.clone()
             I_0[:, :, miny:maxy, minx:maxx] = initial_I_0[:, :, miny:maxy, minx:maxx] + face_residual_0
         else:
-            Outlist_0, _ = self.netG.forward(input_concat,other_params)
-            I_0 = Outlist_0['GlobalGenerator']
+            Outlist_0 = self.netG.forward(input_concat,other_params)
+            I_0 = Outlist_0['Generator']
+            S_0 = Outlist_0['smpl_out']
 
         input_concat1 = torch.cat((next_label, I_0), dim=1)
 
@@ -219,8 +233,9 @@ class Pix2PixHDModel(BaseModel):
             I_1 = initial_I_1.clone()
             I_1[:, :, miny:maxy, minx:maxx] = initial_I_1[:, :, miny:maxy, minx:maxx] + face_residual_1
         else:
-            Outlist_1, _ = self.netG.forward(input_concat1,next_other_params)
-            I_1 = Outlist_1['GlobalGenerator']
+            Outlist_1 = self.netG.forward(input_concat1,next_other_params)
+            I_1 = Outlist_1['Generator']
+            S_1 = Outlist_1['smpl_out']
 
         loss_D_fake_face = loss_D_real_face = loss_G_GAN_face = 0
         fake_face_0 = fake_face_1 = real_face_0 = real_face_1 = 0
@@ -301,16 +316,26 @@ class Pix2PixHDModel(BaseModel):
             loss_G_VGG += (self.criterionL1(I_1, next_image)) * self.opt.lambda_A
 
         # 加入2D keypoints loss
+        # TODO 检查shape是否正确
         loss_G_2DKP = 0
+        loss_G_cam = 0
         if self.opt.use_pixmaf:
-            pass
+            scale = 1.1
+            gt_keypoints_2d_0 = other_params['openpose_kp_2d']
+            gt_keypoints_2d_1 = next_other_params['openpose_kp_2d']
+            img_res_0 = int(other_params['bboxes'][0][2]*scale)
+            img_res_1 = int(next_other_params['bboxes'][0][2]*scale)
+            loss_G_2DKP_0, loss_G_cam_0 = self.criterionPixmaf.get_kp2d_loss(S_0, gt_keypoints_2d_0, 1, img_res_0)
+            loss_G_2DKP_1, loss_G_cam_1 = self.criterionPixmaf.get_kp2d_loss(S_1, gt_keypoints_2d_1, 1, img_res_1)
+            loss_G_2DKP = loss_G_2DKP_0 + loss_G_2DKP_1
+            loss_G_cam = loss_G_cam_0 + loss_G_cam_1
 
-        
         # Only return the fake_B image if necessary to save BW
-        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, \
+        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, \
                     loss_D_real, loss_D_fake, \
                     loss_G_GAN_face, loss_D_real_face,  loss_D_fake_face], \
-                        None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0] ]
+                        None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0, \
+                                                [S_0[-1], S_1[-1]] ] ]
 
     def inference(self, label, prevouts, face_coords):
 

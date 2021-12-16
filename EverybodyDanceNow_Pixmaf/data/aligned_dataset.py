@@ -24,8 +24,12 @@ class AlignedDataset(BaseDataset):
             self.dir_image = os.path.join(opt.dataroot, opt.phase + '_img')  
             self.image_paths = sorted(make_dataset(self.dir_image))
 
-            self.dir_vibe = os.path.join(opt.dataroot, 'train_vibe.pkl')  
-            self.vibe_results = joblib.load(self.dir_vibe)
+            self.file_vibe = os.path.join(opt.dataroot, 'train_vibe.pkl')  
+            self.vibe_results = joblib.load(self.file_vibe)
+
+            self.file_kp2d = os.path.join(opt.dataroot, 'openpose_kps_for_pixmaf/openpose_kps_20606_norm.npy')
+            self.kp2d = np.load(self.file_kp2d)
+
 
         ### load face bounding box coordinates size 128x128
         if opt.face_discrim or opt.face_generator:
@@ -57,17 +61,20 @@ class AlignedDataset(BaseDataset):
             image_tensor = transform_image(image).float()
 
             # 添加bbox
-            other_params['bboxes'] = self.vibe_results[1]['bboxes'][index] #(4,)
+            other_params['bboxes'] = self.vibe_results[1]['bboxes'][index] # torch.Size([1, 4])
 
-            other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] #(3,)
+            other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] # torch.Size([1, 3])
             other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
-            other_params['pose'] = self.vibe_results[1]['pose'][index] #(72,)
-            other_params['betas'] = self.vibe_results[1]['betas'][index] #(10,)
+            other_params['pose'] = self.vibe_results[1]['pose'][index] # torch.Size([1, 72])
+            other_params['betas'] = self.vibe_results[1]['betas'][index] # torch.Size([1, 10])
             # unused
             other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
             other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
             other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
             other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
+
+            # gt openpose keypoint 
+            other_params['openpose_kp_2d'] = self.kp2d[index] # torch.Size([1, 25, 3])
 
         is_next = index < len(self) - 1
         if self.opt.gestures:
@@ -92,15 +99,18 @@ class AlignedDataset(BaseDataset):
                 # 添加bbox
                 next_other_params['bboxes'] = self.vibe_results[1]['bboxes'][index+1] #(4,)
 
-                next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] #(3,)
-                next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
-                next_other_params['pose'] = self.vibe_results[1]['pose'][index] #(72,)
-                next_other_params['betas'] = self.vibe_results[1]['betas'][index] #(10,)
+                next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] #(3,)
+                next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index+1]
+                next_other_params['pose'] = self.vibe_results[1]['pose'][index+1] #(72,)
+                next_other_params['betas'] = self.vibe_results[1]['betas'][index+1] #(10,)
                 # unused
-                next_other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
-                next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
-                next_other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
-                next_other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
+                next_other_params['verts'] = self.vibe_results[1]['verts'][index+1] #(6890, 3)
+                next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index+1] #(49, 3)
+                next_other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index+1]
+                next_other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index+1]
+
+                # gt openpose keypoint 
+                next_other_params['openpose_kp_2d'] = self.kp2d[index+1]
 
         """ If using the face generator and/or face discriminator """
         if self.opt.face_discrim or self.opt.face_generator:

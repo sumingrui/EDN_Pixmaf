@@ -9,8 +9,8 @@ from collections import namedtuple
 
 from ..core import path_config, constants
 
-SMPL_MEAN_PARAMS = 'data/smpl_mean_params.npz'
-SMPL_MODEL_DIR = 'data/smpl'
+SMPL_MEAN_PARAMS = 'pixmaf_data/smpl_mean_params.npz'
+SMPL_MODEL_DIR = 'pixmaf_data/smpl'
 
 # Indices to get the 14 LSP joints from the 17 H36M joints
 H36M_TO_J17 = [6, 5, 4, 1, 2, 3, 16, 15, 14, 11, 12, 13, 8, 10, 0, 7, 9]

@@ -225,72 +225,20 @@ def rot6d_to_rotmat(x):
     b3 = torch.cross(b1, b2)
     return torch.stack((b1, b2, b3), dim=-1)
 
-# def projection(pred_joints, pred_camera, retain_z=False):
-#     pred_cam_t = torch.stack([pred_camera[:, 1],
-#                               pred_camera[:, 2],
-#                               2 * 5000. / (224. * pred_camera[:, 0] + 1e-9)], dim=-1)
-#     batch_size = pred_joints.shape[0]
-#     camera_center = torch.zeros(batch_size, 2)
-#     pred_keypoints_2d = perspective_projection(pred_joints,
-#                                                rotation=torch.eye(3).unsqueeze(0).expand(batch_size, -1, -1).to(pred_joints.device),
-#                                                translation=pred_cam_t,
-#                                                focal_length=5000.,
-#                                                camera_center=camera_center,
-#                                                retain_z=retain_z)
-#     # Normalize keypoints to [-1,1]
-#     pred_keypoints_2d = pred_keypoints_2d / (224. / 2.)
-#     return pred_keypoints_2d
-
-# def perspective_projection(points, rotation, translation,
-#                            focal_length, camera_center, retain_z=False):
-#     """
-#     This function computes the perspective projection of a set of points.
-#     Input:
-#         points (bs, N, 3): 3D points
-#         rotation (bs, 3, 3): Camera rotation
-#         translation (bs, 3): Camera translation
-#         focal_length (bs,) or scalar: Focal length
-#         camera_center (bs, 2): Camera center
-#     """
-#     batch_size = points.shape[0]
-#     K = torch.zeros([batch_size, 3, 3], device=points.device)
-#     K[:,0,0] = focal_length
-#     K[:,1,1] = focal_length
-#     K[:,2,2] = 1.
-#     K[:,:-1, -1] = camera_center
-
-#     # Transform points
-#     points = torch.einsum('bij,bkj->bki', rotation, points)
-#     points = points + translation.unsqueeze(1)
-
-#     # Apply perspective distortion
-#     projected_points = points / points[:,:,-1].unsqueeze(-1)
-
-#     # Apply camera intrinsics
-#     projected_points = torch.einsum('bij,bkj->bki', K, projected_points)
-
-#     if retain_z:
-#         return projected_points
-#     else:
-#         return projected_points[:, :, :-1]
-
-def projection(pred_joints, pred_camera, retain_z=False):
-    focal_length = (1024**2+512**2)**0.5
-    res = 512
+def projection(pred_joints, pred_camera, res, retain_z=False):
     pred_cam_t = torch.stack([pred_camera[:, 1],
                               pred_camera[:, 2],
-                              2 * focal_length / (res * pred_camera[:, 0] + 1e-9)], dim=-1)
+                              2 * 5000. / (res * pred_camera[:, 0] + 1e-9)], dim=-1)
     batch_size = pred_joints.shape[0]
     camera_center = torch.zeros(batch_size, 2)
     pred_keypoints_2d = perspective_projection(pred_joints,
                                                rotation=torch.eye(3).unsqueeze(0).expand(batch_size, -1, -1).to(pred_joints.device),
                                                translation=pred_cam_t,
-                                               focal_length=focal_length,
+                                               focal_length=5000.,
                                                camera_center=camera_center,
                                                retain_z=retain_z)
     # Normalize keypoints to [-1,1]
     pred_keypoints_2d = pred_keypoints_2d / (res / 2.)
-    # print(pred_keypoints_2d.shape) # torch.Size([1, 49, 2])
     return pred_keypoints_2d
 
 def perspective_projection(points, rotation, translation,

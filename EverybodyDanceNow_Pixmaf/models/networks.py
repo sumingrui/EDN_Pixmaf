@@ -142,24 +142,6 @@ class VGGLoss(nn.Module):
             loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())        
         return loss
 
-class Pixmaf_Loss():
-    def __init__(self, device = 'cuda'):
-        super(Pixmaf_Loss, self).__init__()
-        self.device = device
-        self.criterion_keypoints = nn.MSELoss(reduction='none').to(self.device)
-
-    # for openpose
-    def keypoint_loss(self, pred_keypoints_2d, gt_keypoints_2d, openpose_weight=1.0, gt_weight=0.0):
-        """ Compute 2D reprojection loss on the keypoints.
-        The loss is weighted by the confidence.
-        The available keypoints are different for each dataset.
-        """
-        conf = gt_keypoints_2d[:, :, -1].unsqueeze(-1).clone()
-        conf[:, :25] *= openpose_weight
-        conf[:, 25:] *= gt_weight
-        loss = (conf * self.criterion_keypoints(pred_keypoints_2d, gt_keypoints_2d[:, :, :-1])).mean()
-        return loss
-
 
 ##############################################################################
 # Generator

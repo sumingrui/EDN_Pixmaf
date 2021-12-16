@@ -32,7 +32,7 @@ class Regressor(nn.Module):
 
         self.smpl = SMPL(
             SMPL_MODEL_DIR,
-            batch_size=64,
+            batch_size=2,
             create_transl=False
         )
 
@@ -40,11 +40,21 @@ class Regressor(nn.Module):
         init_pose = torch.from_numpy(mean_params['pose'][:]).unsqueeze(0)
         init_shape = torch.from_numpy(mean_params['shape'][:].astype('float32')).unsqueeze(0)
         init_cam = torch.from_numpy(mean_params['cam']).unsqueeze(0)
+
+        '''
+        print(init_pose.shape)
+        print(init_shape.shape)
+        print(init_cam.shape)
+        torch.Size([1, 144])
+        torch.Size([1, 10])
+        torch.Size([1, 3])
+        '''
+
         self.register_buffer('init_pose', init_pose)
         self.register_buffer('init_shape', init_shape)
         self.register_buffer('init_cam', init_cam)
 
-    def forward(self, x, init_pose=None, init_shape=None, init_cam=None, n_iter=1, J_regressor=None):
+    def forward(self, x, res, init_pose=None, init_shape=None, init_cam=None, n_iter=1, J_regressor=None):
         batch_size = x.shape[0]
 
         if init_pose is None:
@@ -79,7 +89,7 @@ class Regressor(nn.Module):
         pred_vertices = pred_output.vertices
         pred_joints = pred_output.joints
         pred_smpl_joints = pred_output.smpl_joints
-        pred_keypoints_2d = projection(pred_joints, pred_cam)
+        pred_keypoints_2d = projection(pred_joints, pred_cam, res)
         pose = rotation_matrix_to_angle_axis(pred_rotmat.reshape(-1, 3, 3)).reshape(-1, 72)
 
         if J_regressor is not None:
@@ -101,7 +111,7 @@ class Regressor(nn.Module):
         }
         return output
 
-    def forward_init(self, x, init_pose=None, init_shape=None, init_cam=None, n_iter=1, J_regressor=None):
+    def forward_init(self, x, res, init_pose=None, init_shape=None, init_cam=None, n_iter=1, J_regressor=None):
         batch_size = x.shape[0]
         # 获得初始值
         if init_pose is None:
@@ -127,7 +137,7 @@ class Regressor(nn.Module):
         pred_vertices = pred_output.vertices
         pred_joints = pred_output.joints
         pred_smpl_joints = pred_output.smpl_joints
-        pred_keypoints_2d = projection(pred_joints, pred_cam)
+        pred_keypoints_2d = projection(pred_joints, pred_cam, res)
         pose = rotation_matrix_to_angle_axis(pred_rotmat.reshape(-1, 3, 3)).reshape(-1, 72)
 
         if J_regressor is not None:
@@ -201,9 +211,6 @@ class PixMAF(nn.Module):
         return Up_Sampling()
 
     def _crop_feature(self, feature, bbox, scale=1.1, device='cuda'):
-        '''
-        feature: torch.Size([])
-        '''
         h = 512
         w = 1024
         x1 = bbox[0]-bbox[2]/2*scale
@@ -221,18 +228,20 @@ class PixMAF(nn.Module):
             [0,b,ty]
         ], dtype=torch.float).to(device)
 
+        # print(feature.shape)
+
         size = torch.Size((1, feature.shape[1], int(bbox[2]*scale/h*feature.shape[2]), int(bbox[2]*scale/h*feature.shape[2])))
         grid = F.affine_grid(theta.unsqueeze(0), size)
         output = F.grid_sample(feature, grid, mode='bilinear', padding_mode='zeros')
-        # TODO need normalization? 暂时不用
-
+        # print(output.shape)
         return output
-
 
     def forward(self, x, init_params, J_regressor=None):
 
         batch_size = x.shape[0]
         bbox = init_params['bboxes'][0]
+        scale = 1.1
+        res = int(bbox[2]*scale)
 
         # spatial features and global features
         # [-1, 1024, 16, 32]
@@ -248,14 +257,12 @@ class PixMAF(nn.Module):
         # by generating initial mesh the beforehand: smpl_output = self.init_smpl
         if cfg.MODEL.PixMAF.USE_PIXMAF:
             assert cfg.MODEL.PixMAF.N_ITER == 4
-            # 使用VIBE初始化
-            smpl_output = self.regressor[0].forward_init(s_feat, init_pose=init_params['pose'], init_shape=init_params['betas'], \
-                                                            init_cam=init_params['pred_cam'], n_iter=1, J_regressor=J_regressor)
+            smpl_output = self.regressor[0].forward_init(s_feat, res, J_regressor=J_regressor)
             out_list['smpl_out'] = [smpl_output]
             out_list['silhouette'] = []
             
         # for visulization
-        vis_feat_list = [s_feat.detach()]
+        # vis_feat_list = [s_feat.detach()]
 
         # parameter predictions
         for rf_i in range(cfg.MODEL.PixMAF.N_ITER): # 0, 1, 2, 3
@@ -263,7 +270,7 @@ class PixMAF(nn.Module):
             s_feat_i = deconv_blocks[rf_i](s_feat)
             # print('s_feat_i',rf_i,':',s_feat_i.shape)
             s_feat = s_feat_i   
-            vis_feat_list.append(s_feat_i.detach())
+            # vis_feat_list.append(s_feat_i.detach())
 
             if cfg.MODEL.PixMAF.USE_PIXMAF:
                 pred_cam = smpl_output['pred_cam']
@@ -290,21 +297,22 @@ class PixMAF(nn.Module):
                     # TODO: use a more sparse SMPL implementation (with 431 vertices) for acceleration
                     pred_smpl_verts_ds = torch.matmul(self.maf_extractor[rf_i].Dmap.unsqueeze(0), pred_smpl_verts) # [B, 431, 3]
                     # print('pred_smpl_verts_ds:',pred_smpl_verts_ds.shape) # torch.Size([1, 431, 3])
-                    ref_feature = self.maf_extractor[rf_i](pred_smpl_verts_ds) # [B, 431 * n_feat]
+                    ref_feature = self.maf_extractor[rf_i](pred_smpl_verts_ds, res) # [B, 431 * n_feat]
             
                 # print('Regressor:',rf_i)
                 # print(self.regressor[rf_i])
-                smpl_output = self.regressor[rf_i](ref_feature, pred_pose, pred_shape, pred_cam, n_iter=1, J_regressor=J_regressor)
+                smpl_output = self.regressor[rf_i](ref_feature, res, pred_pose, pred_shape, pred_cam, n_iter=1, J_regressor=J_regressor)
                 out_list['smpl_out'].append(smpl_output)
 
         result_img = last_block(s_feat)
-        out_list['GlobalGenerator'] = result_img
+        out_list['Generator'] = result_img
 
         # if self.training and cfg.MODEL.PyMAF.AUX_SUPV_ON:
         #     iuv_out_dict = self.dp_head(s_feat)
         #     out_list['dp_out'].append(iuv_out_dict)
 
-        return out_list, vis_feat_list
+        # return out_list, vis_feat_list
+        return out_list
 
 def Pixmaf_net(smpl_mean_params, pretrained=True):
     """ Constructs an PixMAF model with Pix2pixHD backbone.

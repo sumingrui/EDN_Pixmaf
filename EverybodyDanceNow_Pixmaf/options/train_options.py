@@ -42,7 +42,7 @@ class TrainOptions(BaseOptions):
         #for Pixmaf
         pixmaf = self.parser.add_argument_group('pixmaf')
         pixmaf.add_argument('--use_pixmaf', action='store_true', help='Use pixmaf network')
-        pixmaf.add_argument('--log_dir', default='logs', help='Directory to store logs')
-        pixmaf.add_argument('--cfg_file', type=str, default='./configs/pixmaf_config.yaml', help='config file path for PixMAF.')
+        #pixmaf.add_argument('--log_dir', default='logs', help='Directory to store logs')
+        pixmaf.add_argument('--cfg_file', type=str, default=None, help='config file path for PixMAF.')
         
         self.isTrain = True

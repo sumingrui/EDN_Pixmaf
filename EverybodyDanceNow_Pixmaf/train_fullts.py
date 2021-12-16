@@ -11,8 +11,10 @@ import os
 import numpy as np
 import torch
 from torch.autograd import Variable
+import cv2
 
 from models.pixmaf_net.core.cfgs import cfg,parse_args_extend
+from models.pixmaf_net.models.networks import render_smpl
 
 opt = TrainOptions().parse()
 parse_args_extend(opt)
@@ -59,6 +61,26 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
         ############## Forward Pass ######################
 
+        # 测试dataset
+        '''
+        additional_data = data['other_params']
+        temp_bboxes = additional_data['bboxes']
+        temp_cam = additional_data['pred_cam']
+        temp_pose = additional_data['pose']
+        temp_betas = additional_data['betas']
+        temp_opkp = additional_data['openpose_kp_2d']
+
+        print(temp_bboxes.shape)
+        print(temp_cam.shape)
+        print(temp_pose.shape)
+        print(temp_betas.shape)
+        print(temp_opkp.shape)
+        torch.Size([1, 4])
+        torch.Size([1, 3])
+        torch.Size([1, 72])
+        torch.Size([1, 10])
+        torch.Size([1, 25, 3])
+        '''
 
         no_nexts = data['next_label'].dim() > 1 #check if has a next label (last training pair does not have a next label)
 
@@ -75,7 +97,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             # calculate final loss scalar
             loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
-            loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface'] + loss_dict['G_2DKP']
+            loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface'] \
+                        + loss_dict['G_2DKP'] + loss_dict['G_CAM']
 
             ############### Backward Pass ####################
             # update generator weights
@@ -90,6 +113,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
+            
+
             ############## Display results and errors ##########
             ### print out errors
             ### 100 epochs打印一次
@@ -103,6 +128,13 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 visualizer.print_current_errors(epoch, epoch_iter, errors, t)
                 visualizer.plot_current_errors(errors, total_steps)
 
+                # render SMPL
+                human_mesh_img = render_smpl(generated[4][0], data['other_params']['bboxes'], data['image'], 500, 500)
+                web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
+                img_dir = os.path.join(web_dir, 'images')
+                cv2.imwrite(os.path.join(img_dir, 'test.png'), human_mesh_img)
+
+                
             ### display output images
             if save_fake:
                 syn = generated[0].data[0]
@@ -126,6 +158,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                                            ('input_face', util.tensor2im(data['label'][0][:, miny:maxy, minx:maxx], normalize=False)),
                                            ('real_image', util.tensor2im(targets[0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
+
+                
 
         ### save latest model
         if total_steps % opt.save_latest_freq == 0:

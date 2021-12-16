@@ -50,7 +50,7 @@ class MAF_Extractor(nn.Module):
 
         # downsample SMPL mesh and assign part labels
         # from https://github.com/nkolot/GraphCMR/blob/master/data/mesh_downsampling.npz
-        smpl_mesh_graph = np.load('data/mesh_downsampling.npz', allow_pickle=True, encoding='latin1')
+        smpl_mesh_graph = np.load('pixmaf_data/mesh_downsampling.npz', allow_pickle=True, encoding='latin1')
 
         A = smpl_mesh_graph['A']
         U = smpl_mesh_graph['U']
@@ -116,17 +116,17 @@ class MAF_Extractor(nn.Module):
             # Default grid_sample behavior has changed to align_corners=False since 1.3.0.
             point_feat = torch.nn.functional.grid_sample(im_feat, points.unsqueeze(2), align_corners=True)[..., 0]
         else:
-            #print('im_feat:',im_feat.shape) # 0: torch.Size([1, 512, 32, 64])
-            #print('points.unsqueeze(2):',points.unsqueeze(2).shape) # 0: torch.Size([1, 441, 1, 2])
+            # print('im_feat:',im_feat.shape) # 0: torch.Size([1, 512, 32, 64])
+            # print('points.unsqueeze(2):',points.unsqueeze(2).shape) # 0: torch.Size([1, 441, 1, 2])
             point_feat = torch.nn.functional.grid_sample(im_feat, points.unsqueeze(2))[..., 0]
-            print('point_feat:',point_feat.shape) # 0: torch.Size([1, 512, 441])
+            # print('point_feat:',point_feat.shape) # 0: torch.Size([1, 512, 441])
 
         mesh_align_feat = self.reduce_dim(point_feat)
-        print('mesh_align_feat:',mesh_align_feat.shape) # 0:torch.Size([1, 2205])
-        print('')
+        # print('mesh_align_feat:',mesh_align_feat.shape) # 0:torch.Size([1, 2205])
+        # print('')
         return mesh_align_feat
 
-    def forward(self, p, s_feat=None, cam=None, **kwargs):
+    def forward(self, p, res, s_feat=None, cam=None, **kwargs):
         ''' Returns mesh-aligned features for the 3D mesh points.
 
         Args:
@@ -139,7 +139,7 @@ class MAF_Extractor(nn.Module):
         if cam is None:
             cam = self.cam
         
-        p_proj_2d = projection(p, cam, retain_z=False)
-        print('p_proj_2d:',p_proj_2d.shape)
+        p_proj_2d = projection(p, cam, res, retain_z=False)
+        # print('p_proj_2d:',p_proj_2d.shape)
         mesh_align_feat = self.sampling(p_proj_2d, s_feat)
         return mesh_align_feat
