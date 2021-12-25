@@ -27,7 +27,7 @@ class MAF_Extractor(nn.Module):
         self.device = device
         self.filters = []
         self.num_views = 1
-        filter_channels = cfg.MODEL.PixMAF.MLP_DIM[deconv_layer_list]
+        filter_channels = cfg.PixMAF.MLP_DIM[deconv_layer_list]
         self.last_op = nn.ReLU(True) 
 
         for l in range(0, len(filter_channels) - 1): # 3

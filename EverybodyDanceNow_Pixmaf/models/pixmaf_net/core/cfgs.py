@@ -44,26 +44,17 @@ cfg.TEST = CN(new_allowed=True)
 
 
 
-cfg.MODEL.PixMAF = CN(new_allowed=True)
-cfg.MODEL.PixMAF.USE_PIXMAF = True
-cfg.MODEL.PixMAF.N_ITER = 4
-# cfg.MODEL.PixMAF.MLP_DIM = [[512, 256, 128, 5],[256, 128, 64, 10],[128, 64, 32, 10],[64, 32, 16, 10]]
-cfg.MODEL.PixMAF.MLP_DIM = [[512, 256, 128, 5],[256, 128, 64, 5],[128, 64, 32, 5],[64, 32, 16, 5]]
-cfg.MODEL.PixMAF.BACKBONE = 'Pix2pixHD'
-cfg.MODEL.PixMAF.USE_SILHOUETTE = True
+cfg.PixMAF = CN(new_allowed=True)
+cfg.PixMAF.USE_PIXMAF = True
+cfg.PixMAF.N_ITER = 4
+# cfg.PixMAF.MLP_DIM = [[512, 256, 128, 5],[256, 128, 64, 10],[128, 64, 32, 10],[64, 32, 16, 10]]
+cfg.PixMAF.MLP_DIM = [[512, 256, 128, 5],[256, 128, 64, 5],[128, 64, 32, 5],[64, 32, 16, 5]]
+cfg.PixMAF.BACKBONE = 'Pix2pixHD'
+cfg.PixMAF.USE_SILHOUETTE = True
 
 cfg.LOSS = CN(new_allowed=True)
-cfg.LOSS.KP_2D_W = 50.0
-# cfg.LOSS.KP_3D_W = 300.0
-# cfg.LOSS.SHAPE_W = 0.06
-# cfg.LOSS.POSE_W = 60.0
-# cfg.LOSS.VERT_W = 0.0
-# # Loss weights for dense correspondences
-# cfg.LOSS.INDEX_WEIGHTS = 2.0
-# # Loss weights for surface parts. (24 Parts)
-# cfg.LOSS.PART_WEIGHTS = 0.3
-# # Loss weights for UV regression.
-# cfg.LOSS.POINT_REGRESSION_WEIGHTS = 0.5
+cfg.LOSS.KP_2D_W = 100.0
+cfg.LOSS.SILHOUETTES_W = 0.00001
 
 
 

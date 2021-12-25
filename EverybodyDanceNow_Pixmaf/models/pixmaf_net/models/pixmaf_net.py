@@ -174,13 +174,13 @@ class PixMAF(nn.Module):
         # deconv layers
         self.deconv_layers = self._make_deconv_layer()
     
-        if cfg.MODEL.PixMAF.USE_PIXMAF:
+        if cfg.PixMAF.USE_PIXMAF:
             # maf_extractor
             self.maf_extractor = nn.ModuleList()
-            for i in range(cfg.MODEL.PixMAF.N_ITER): # 4
+            for i in range(cfg.PixMAF.N_ITER): # 4
                 self.maf_extractor.append(MAF_Extractor(deconv_layer_list=i))
             
-            ma_feat_len = self.maf_extractor[-1].Dmap.shape[0] * cfg.MODEL.PixMAF.MLP_DIM[1][-1] # 431*5 = 2155
+            ma_feat_len = self.maf_extractor[-1].Dmap.shape[0] * cfg.PixMAF.MLP_DIM[1][-1] # 431*5 = 2155
             
             grid_size_x = 21
             grid_size_y = 21
@@ -188,11 +188,11 @@ class PixMAF(nn.Module):
             points_grid = torch.stack([yv.reshape(-1), xv.reshape(-1)]).unsqueeze(0) # torch.Size([1, 2, 441])
 
             self.register_buffer('points_grid', points_grid)
-            grid_feat_len = grid_size_x * grid_size_y * cfg.MODEL.PixMAF.MLP_DIM[0][-1] # 21*21*5 = 2205
+            grid_feat_len = grid_size_x * grid_size_y * cfg.PixMAF.MLP_DIM[0][-1] # 21*21*5 = 2205
 
             # regressor
             self.regressor = nn.ModuleList()
-            for i in range(cfg.MODEL.PixMAF.N_ITER): # 4
+            for i in range(cfg.PixMAF.N_ITER): # 4
                 if i == 0:
                     ref_infeat_dim = grid_feat_len # 2205
                 else:
@@ -205,18 +205,19 @@ class PixMAF(nn.Module):
         #     self.dp_head = IUV_predict_layer(feat_dim=dp_feat_dim)
 
         # 添加剪影 silhouette loss
-        #if cfg.MODEL.PixMAF.USE_SILHOUETTE:
+        #if cfg.PixMAF.USE_SILHOUETTE:
 
     def _make_deconv_layer(self):
         return Up_Sampling()
 
-    def _crop_feature(self, feature, bbox, scale=1.1, device='cuda'):
+    def _crop_feature(self, feature, bbox, step, stage = 'global', device='cuda'):
+        '''
         h = 512
         w = 1024
-        x1 = bbox[0]-bbox[2]/2*scale
-        y1 = bbox[1]-bbox[2]/2*scale
-        x2 = bbox[0]+bbox[2]/2*scale
-        y2 = bbox[1]+bbox[2]/2*scale
+        x1 = bbox[0]-bbox[2]/2
+        y1 = bbox[1]-bbox[2]/2
+        x2 = bbox[0]+bbox[2]/2
+        y2 = bbox[1]+bbox[2]/2
 
         a = (x2-x1)/w
         b = (y2-y1)/h
@@ -230,9 +231,46 @@ class PixMAF(nn.Module):
 
         # print(feature.shape)
 
-        size = torch.Size((1, feature.shape[1], int(bbox[2]*scale/h*feature.shape[2]), int(bbox[2]*scale/h*feature.shape[2])))
+        size = torch.Size((1, feature.shape[1], int(bbox[2]/h*feature.shape[2]), int(bbox[2]/h*feature.shape[2])))
         grid = F.affine_grid(theta.unsqueeze(0), size)
         output = F.grid_sample(feature, grid, mode='bilinear', padding_mode='zeros')
+        # print(output.shape)
+        '''
+
+        # 修改成不需要grid_sample的过程
+        from math import floor
+        h = 512
+        w = 1024
+
+        x1 = bbox[0]-bbox[2]/2
+        y1 = bbox[1]-bbox[2]/2
+        x2 = bbox[0]+bbox[2]/2
+        y2 = bbox[1]+bbox[2]/2
+
+        if stage == 'global':
+            h_f = 32
+            w_f = 64
+
+        base_side = floor(bbox[2]/h*h_f)
+        base_x1 = floor(x1/w*w_f)
+        base_y1 = floor(y1/h*h_f)
+        base_x2 = base_x1 + base_side
+        base_y2 = base_y1 + base_side
+
+        f_dim = feature.shape[1]
+        f_h = feature.shape[2]
+        f_w = feature.shape[3]
+        
+        # base: [512,32,64]
+        k = 2**step        
+        lu_x = base_x1 * k
+        lu_y = base_y1 * k
+        rb_x = base_x2 * k 
+        rb_y = base_y2 * k 
+        p = max(-lu_x, -lu_y, rb_x-f_w, rb_y-f_h, 0)
+        feature = F.pad(feature,(p,p,p,p),'constant',0)
+        output = feature[:,:,lu_y+p:rb_y+p,lu_x+p:rb_x+p]
+
         # print(output.shape)
         return output
 
@@ -240,8 +278,7 @@ class PixMAF(nn.Module):
 
         batch_size = x.shape[0]
         bbox = init_params['bboxes'][0]
-        scale = 1.1
-        res = int(bbox[2]*scale)
+        res = int(bbox[2])
 
         # spatial features and global features
         # [-1, 1024, 16, 32]
@@ -255,8 +292,8 @@ class PixMAF(nn.Module):
         # initial parameters
         # TODO: remove the initial mesh generation during forward to reduce runtime
         # by generating initial mesh the beforehand: smpl_output = self.init_smpl
-        if cfg.MODEL.PixMAF.USE_PIXMAF:
-            assert cfg.MODEL.PixMAF.N_ITER == 4
+        if cfg.PixMAF.USE_PIXMAF:
+            assert cfg.PixMAF.N_ITER == 4
             smpl_output = self.regressor[0].forward_init(s_feat, res, J_regressor=J_regressor)
             out_list['smpl_out'] = [smpl_output]
             out_list['silhouette'] = []
@@ -265,14 +302,14 @@ class PixMAF(nn.Module):
         # vis_feat_list = [s_feat.detach()]
 
         # parameter predictions
-        for rf_i in range(cfg.MODEL.PixMAF.N_ITER): # 0, 1, 2, 3
+        for rf_i in range(cfg.PixMAF.N_ITER): # 0, 1, 2, 3
 
             s_feat_i = deconv_blocks[rf_i](s_feat)
             # print('s_feat_i',rf_i,':',s_feat_i.shape)
             s_feat = s_feat_i   
             # vis_feat_list.append(s_feat_i.detach())
 
-            if cfg.MODEL.PixMAF.USE_PIXMAF:
+            if cfg.PixMAF.USE_PIXMAF:
                 pred_cam = smpl_output['pred_cam']
                 pred_shape = smpl_output['pred_shape']
                 pred_pose = smpl_output['pred_pose']
@@ -282,7 +319,7 @@ class PixMAF(nn.Module):
                 pred_pose = pred_pose.detach()
 
                 # 对s_feat_i进行修剪 TODO 只是一种尝试
-                s_feat_i = self._crop_feature(s_feat_i, bbox)
+                s_feat_i = self._crop_feature(s_feat_i, bbox, rf_i)
 
                 self.maf_extractor[rf_i].im_feat = s_feat_i
                 self.maf_extractor[rf_i].cam = pred_cam

@@ -6,9 +6,11 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import functools
-from .smpl import SMPL, SMPL_MODEL_DIR
+import neural_renderer as nr
+from .smpl import SMPL, SMPL_MODEL_DIR, get_smpl_faces
 from ..utils.geometry import perspective_projection
 from ..core.cfgs import cfg
+from ..core import path_config
 from ..utils.renderer import PyRenderer
 
 ###############################################################################
@@ -208,6 +210,99 @@ class Pixmaf_Loss():
 
         return kp2d_loss, cam_loss
 
+    # 考虑crop_res = 256
+    def get_silhouette_loss(self, crop_img, smpl_outs, crop_res=256, batch_size=1, device='cuda'):
+        smpl = SMPL(SMPL_MODEL_DIR, batch_size=batch_size, create_transl=False).to(device)
+        smpl_out = smpl_outs[-1]
+        pred_rotmat = smpl_out['rotmat']
+        pred_betas = smpl_out['theta'][:, 3:13]
+        pred_camera =  smpl_out['theta'][:, :3]
+
+        pred_output = smpl(betas=pred_betas, body_pose=pred_rotmat[:,1:],
+                            global_orient=pred_rotmat[:,0].unsqueeze(1), pose2rot=False)
+        pred_vertices = pred_output.vertices
+
+        # for silhouette loss
+        silhouette_model = Silhouette_model(crop_res).to(self.device)
+        silhouettes_img = silhouette_model(pred_vertices,pred_camera)
+
+        # crop_img: 1
+        # silhouettes_img: 2
+        crop_img_index = (crop_img>0).nonzero()
+        silhouettes_img_index = (silhouettes_img>0).nonzero()
+        diff_index = (((crop_img>0) == (silhouettes_img>0))==0).nonzero()
+
+        l1 = 0
+        l2_squared = 0
+        
+        for i in range(diff_index.shape[0]):
+            a = crop_img[diff_index[i][0],diff_index[i][1]]
+            b = silhouettes_img[diff_index[i][0],diff_index[i][1]]
+
+            # 点在1上
+            if a!=0 and b==0:
+                l1 += self._caldist_l1(diff_index[i].float(),silhouettes_img_index.float())
+        
+            # 点在2上
+            elif a==0 and b!= 0:
+                l2_squared += self._caldist_squared_l2(diff_index[i].float(),crop_img_index.float())
+
+            else:
+                print('Error')
+
+        silhouette_loss = (l1 + l2_squared) * cfg.LOSS.SILHOUETTES_W
+        return silhouette_loss
+
+    def _caldist_squared_l2(self,pt,pts):
+        d = torch.min(torch.sum((pts - pt)*(pts - pt), dim=1))
+        return d
+
+    def _caldist_l1(self,pt,pts):
+        d = torch.min(torch.sum(torch.abs(pts - pt), dim=1))
+        return d
+
+
+class Silhouette_model(nn.Module):
+    def __init__(self, crop_res):
+        super(Silhouette_model, self).__init__()
+
+        # faces
+        faces = get_smpl_faces()
+        faces = faces.astype(np.int32)
+        faces = torch.from_numpy(faces)[None, :, :]
+        self.register_buffer('faces', faces)
+
+        textures = np.load(path_config.VERTEX_TEXTURE_FILE)
+        self.textures = torch.from_numpy(textures).cuda().float()
+
+        # setup renderer
+        self.focal_length = 5000
+        self.render_res = crop_res
+        renderer = nr.Renderer(dist_coeffs=None, orig_size=self.render_res,
+                                           image_size=self.render_res,
+                                           camera_mode='projection',
+                                           light_intensity_ambient=1,
+                                           light_intensity_directional=0,
+                                           anti_aliasing=True)
+        self.renderer = renderer
+
+    def forward(self, vertices, camera):
+        cam_t = torch.stack([camera[:,1], camera[:,2], 2*self.focal_length/(self.render_res * camera[:,0] +1e-9)],dim=-1)
+        batch_size = vertices.shape[0] 
+        K = torch.eye(3, device=vertices.device)
+        K[0,0] = self.focal_length 
+        K[1,1] = self.focal_length 
+        K[2,2] = 1
+        K[0,2] = self.render_res / 2.
+        K[1,2] = self.render_res / 2.
+        K = K[None, :, :].expand(batch_size, -1, -1)
+        R = torch.eye(3, device=vertices.device)[None, :, :].expand(batch_size, -1, -1)
+        t = cam_t.unsqueeze(1)
+        self.faces = self.faces.expand(batch_size, -1, -1)
+
+        # render_silhouettes
+        silhouettes_img =  self.renderer(vertices, self.faces, textures=self.textures, mode='silhouettes',K=K, R=R, t=t)  
+        return silhouettes_img
             
 ###############################################################################
 # Render
@@ -246,7 +341,6 @@ def render_smpl(smpl_output, bboxes, img, orig_width, orig_height):
 
     side_img = np.zeros_like(img)
 
-    print(side_img.shape)
     side_img = renderer(
         pred_vertices.squeeze(0),
         img=side_img,
@@ -272,8 +366,7 @@ def convert_crop_cam_to_orig_img(cam, bbox, img_width, img_height):
     :param img_height (int): original image height
     :return:
     '''
-    scale = 1.1
-    cx, cy, h = bbox[:,0], bbox[:,1], bbox[:,2]*scale
+    cx, cy, h = bbox[:,0], bbox[:,1], bbox[:,2]
     hw, hh = img_width / 2., img_height / 2.
     sx = cam[:,0] * (1. / (img_width / h))
     sy = cam[:,0] * (1. / (img_height / h))

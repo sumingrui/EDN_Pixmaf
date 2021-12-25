@@ -320,15 +320,25 @@ class Pix2PixHDModel(BaseModel):
         loss_G_2DKP = 0
         loss_G_cam = 0
         if self.opt.use_pixmaf:
-            scale = 1.1
             gt_keypoints_2d_0 = other_params['openpose_kp_2d']
             gt_keypoints_2d_1 = next_other_params['openpose_kp_2d']
-            img_res_0 = int(other_params['bboxes'][0][2]*scale)
-            img_res_1 = int(next_other_params['bboxes'][0][2]*scale)
+            img_res_0 = int(other_params['bboxes'][0][2])
+            img_res_1 = int(next_other_params['bboxes'][0][2])
             loss_G_2DKP_0, loss_G_cam_0 = self.criterionPixmaf.get_kp2d_loss(S_0, gt_keypoints_2d_0, 1, img_res_0)
             loss_G_2DKP_1, loss_G_cam_1 = self.criterionPixmaf.get_kp2d_loss(S_1, gt_keypoints_2d_1, 1, img_res_1)
             loss_G_2DKP = loss_G_2DKP_0 + loss_G_2DKP_1
             loss_G_cam = loss_G_cam_0 + loss_G_cam_1
+
+        # 加入silhouette loss
+        loss_G_silhouette = 0
+        if self.opt.use_pixmaf:      
+            # 获得原始剪影
+
+            # 计算剪影loss
+
+            pass
+
+
 
         # Only return the fake_B image if necessary to save BW
         return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, \

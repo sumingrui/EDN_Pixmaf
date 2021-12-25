@@ -61,7 +61,7 @@ class AlignedDataset(BaseDataset):
             image_tensor = transform_image(image).float()
 
             # 添加bbox
-            other_params['bboxes'] = self.vibe_results[1]['bboxes'][index] # torch.Size([1, 4])
+            other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([1., 1., 1.1, 1.1])) # torch.Size([1, 4])
 
             other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] # torch.Size([1, 3])
             other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
@@ -93,12 +93,13 @@ class AlignedDataset(BaseDataset):
             if self.opt.isTrain:
                 image_path = self.image_paths[index+1]   
                 image = Image.open(image_path).convert('RGB')
+                # 用0.5来 normalize
                 transform_image = get_transform(self.opt, params)      
                 next_image = transform_image(image).float()
 
                 # 添加bbox
-                next_other_params['bboxes'] = self.vibe_results[1]['bboxes'][index+1] #(4,)
-
+                next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([1., 1., 1.1, 1.1])) #(4,)
+            
                 next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] #(3,)
                 next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index+1]
                 next_other_params['pose'] = self.vibe_results[1]['pose'][index+1] #(72,)
