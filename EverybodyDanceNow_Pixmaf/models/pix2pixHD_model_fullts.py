@@ -95,7 +95,7 @@ class Pix2PixHDModel(BaseModel):
             self.criterionPixmaf = Pixmaf_Loss()
         
             # Loss names
-            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', \
+            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', 'G_SIL', \
                                 'D_real', 'D_fake', 'G_GANface', 'D_realface', 'D_fakeface']
 
             # initialize optimizers
@@ -338,7 +338,7 @@ class Pix2PixHDModel(BaseModel):
             loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5  
 
         # Only return the fake_B image if necessary to save BW
-        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, \
+        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, loss_G_silhouette, \
                     loss_D_real, loss_D_fake, \
                     loss_G_GAN_face, loss_D_real_face,  loss_D_fake_face], \
                         None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0, \
