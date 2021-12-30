@@ -332,23 +332,10 @@ class Pix2PixHDModel(BaseModel):
         # 加入silhouette loss
         loss_G_silhouette = 0
         if self.opt.use_pixmaf:      
-            # 获得剪影
-            print('TEST')
-            print(S_0[-1]['verts'])
-            print(S_0[-1]['pred_cam'])
-
-            render_model = Silhouette_model().cuda()
-            # sulhouette_img0 = render_model(S_0[-1]['verts'],S_0[-1]['pred_cam'])
-            # sulhouette_img1 = render_model(S_1[-1]['verts'],S_1[-1]['pred_cam'])
-            # 计算剪影loss
-            sulhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'],S_0[-1])
-            sulhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'],S_1[-1])
-            print(sulhouette_loss0)
-            print(sulhouette_loss1)
-
-            pass
-
-
+            # 计算剪影lo
+            silhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),S_0[-1])
+            silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),S_1[-1])
+            loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5  
 
         # Only return the fake_B image if necessary to save BW
         return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, \

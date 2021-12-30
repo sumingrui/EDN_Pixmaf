@@ -81,10 +81,6 @@ class AlignedDataset(BaseDataset):
 
             # pseudo-gt silhouette image
             other_params['silhouette'] = torch.from_numpy(cv2.imread(self.silhouettes_paths[index],cv2.IMREAD_GRAYSCALE))
-            print('-------------------------------------------------')
-            print(other_params['silhouette'].shape)
-            print(self.silhouettes_paths[index])
-            exit()
 
         is_next = index < len(self) - 1
         if self.opt.gestures:

@@ -211,9 +211,8 @@ class Pixmaf_Loss():
         return kp2d_loss, cam_loss
 
     # 考虑crop_res = 384
-    def get_silhouette_loss(self, crop_img, smpl_outs, crop_res=384, batch_size=1, device='cuda'):
+    def get_silhouette_loss(self, crop_img, smpl_out, crop_res=384, batch_size=1, device='cuda'):
         smpl = SMPL(SMPL_MODEL_DIR, batch_size=batch_size, create_transl=False).to(device)
-        smpl_out = smpl_outs[-1]
         pred_rotmat = smpl_out['rotmat']
         pred_betas = smpl_out['theta'][:, 3:13]
         pred_camera =  smpl_out['theta'][:, :3]
@@ -224,13 +223,13 @@ class Pixmaf_Loss():
 
         # for silhouette loss
         silhouette_model = Silhouette_model(crop_res).to(self.device)
-        silhouettes_img = silhouette_model(pred_vertices,pred_camera)
+        silhouettes_img = silhouette_model(pred_vertices,pred_camera).squeeze(0)
 
         # crop_img: 1
         # silhouettes_img: 2
-        crop_img_index = (crop_img>0).nonzero()
-        silhouettes_img_index = (silhouettes_img>0).nonzero()
-        diff_index = (((crop_img>0) == (silhouettes_img>0))==0).nonzero()
+        crop_img_index = (crop_img>0).nonzero(as_tuple=False)
+        silhouettes_img_index = (silhouettes_img>0).nonzero(as_tuple=False)
+        diff_index = (((crop_img>0) == (silhouettes_img>0))==0).nonzero(as_tuple=False)
 
         l1 = 0
         l2_squared = 0
