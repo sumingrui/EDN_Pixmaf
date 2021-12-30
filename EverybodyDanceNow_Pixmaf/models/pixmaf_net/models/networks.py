@@ -210,8 +210,8 @@ class Pixmaf_Loss():
 
         return kp2d_loss, cam_loss
 
-    # 考虑crop_res = 256
-    def get_silhouette_loss(self, crop_img, smpl_outs, crop_res=256, batch_size=1, device='cuda'):
+    # 考虑crop_res = 384
+    def get_silhouette_loss(self, crop_img, smpl_outs, crop_res=384, batch_size=1, device='cuda'):
         smpl = SMPL(SMPL_MODEL_DIR, batch_size=batch_size, create_transl=False).to(device)
         smpl_out = smpl_outs[-1]
         pred_rotmat = smpl_out['rotmat']
@@ -263,7 +263,7 @@ class Pixmaf_Loss():
 
 
 class Silhouette_model(nn.Module):
-    def __init__(self, crop_res):
+    def __init__(self, crop_res=384):
         super(Silhouette_model, self).__init__()
 
         # faces

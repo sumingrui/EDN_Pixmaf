@@ -9,6 +9,7 @@ from data.image_folder import make_dataset
 from PIL import Image
 import numpy as np
 import joblib
+import cv2
 
 class AlignedDataset(BaseDataset):
     def initialize(self, opt):
@@ -30,6 +31,8 @@ class AlignedDataset(BaseDataset):
             self.file_kp2d = os.path.join(opt.dataroot, 'openpose_kps_for_pixmaf/openpose_kps_20606_norm.npy')
             self.kp2d = np.load(self.file_kp2d)
 
+            self.dir_silhouettes = os.path.join(opt.dataroot, 'georges_sil_binary_384_384')
+            self.silhouettes_paths = sorted(make_dataset(self.dir_silhouettes))
 
         ### load face bounding box coordinates size 128x128
         if opt.face_discrim or opt.face_generator:
@@ -73,8 +76,15 @@ class AlignedDataset(BaseDataset):
             other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
             other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
 
-            # gt openpose keypoint 
+            # pseudo-gt openpose keypoint 
             other_params['openpose_kp_2d'] = self.kp2d[index] # torch.Size([1, 25, 3])
+
+            # pseudo-gt silhouette image
+            other_params['silhouette'] = torch.from_numpy(cv2.imread(self.silhouettes_paths[index],cv2.IMREAD_GRAYSCALE))
+            print('-------------------------------------------------')
+            print(other_params['silhouette'].shape)
+            print(self.silhouettes_paths[index])
+            exit()
 
         is_next = index < len(self) - 1
         if self.opt.gestures:
@@ -82,7 +92,6 @@ class AlignedDataset(BaseDataset):
 
         """ Load the next label, image pair """
         if is_next:
-
             paths = self.label_paths
             label_path = paths[index+1]              
             label = Image.open(label_path).convert('RGB')        
@@ -112,6 +121,9 @@ class AlignedDataset(BaseDataset):
 
                 # gt openpose keypoint 
                 next_other_params['openpose_kp_2d'] = self.kp2d[index+1]
+
+                # pseudo-gt silhouette image
+                next_other_params['silhouette'] = torch.from_numpy(cv2.imread(self.silhouettes_paths[index+1],cv2.IMREAD_GRAYSCALE))
 
         """ If using the face generator and/or face discriminator """
         if self.opt.face_discrim or self.opt.face_generator:

@@ -11,7 +11,7 @@ from .base_model import BaseModel
 from . import networks
 
 # Pixmaf
-from .pixmaf_net.models.networks import Pixmaf_Loss
+from .pixmaf_net.models.networks import Pixmaf_Loss, Silhouette_model
 
 class Pix2PixHDModel(BaseModel):
     def name(self):
@@ -326,15 +326,25 @@ class Pix2PixHDModel(BaseModel):
             img_res_1 = int(next_other_params['bboxes'][0][2])
             loss_G_2DKP_0, loss_G_cam_0 = self.criterionPixmaf.get_kp2d_loss(S_0, gt_keypoints_2d_0, 1, img_res_0)
             loss_G_2DKP_1, loss_G_cam_1 = self.criterionPixmaf.get_kp2d_loss(S_1, gt_keypoints_2d_1, 1, img_res_1)
-            loss_G_2DKP = loss_G_2DKP_0 + loss_G_2DKP_1
-            loss_G_cam = loss_G_cam_0 + loss_G_cam_1
+            loss_G_2DKP = (loss_G_2DKP_0 + loss_G_2DKP_1)*0.5
+            loss_G_cam = (loss_G_cam_0 + loss_G_cam_1)*0.5
 
         # 加入silhouette loss
         loss_G_silhouette = 0
         if self.opt.use_pixmaf:      
-            # 获得原始剪影
+            # 获得剪影
+            print('TEST')
+            print(S_0[-1]['verts'])
+            print(S_0[-1]['pred_cam'])
 
+            render_model = Silhouette_model().cuda()
+            # sulhouette_img0 = render_model(S_0[-1]['verts'],S_0[-1]['pred_cam'])
+            # sulhouette_img1 = render_model(S_1[-1]['verts'],S_1[-1]['pred_cam'])
             # 计算剪影loss
+            sulhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'],S_0[-1])
+            sulhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'],S_1[-1])
+            print(sulhouette_loss0)
+            print(sulhouette_loss1)
 
             pass
 
