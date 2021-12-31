@@ -18,7 +18,7 @@ import os
 import json
 from yacs.config import CfgNode as CN
 
-VIBE_DB_DIR = 'data/vibe_db'
+VIBE_DB_DIR = 'pixmaf_data/vibe_db'
 
 # Configuration variables
 cfg = CN(new_allowed=True)
