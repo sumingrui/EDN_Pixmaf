@@ -20,7 +20,7 @@ import numpy as np
 import os.path as osp
 from torch.utils.data import Dataset
 from skimage.util.shape import view_as_windows
-from ..models.pixmaf_net.core.cfgs import VIBE_DB_DIR
+from models.pixmaf_net.core.cfgs import VIBE_DB_DIR
 
 
 def split_into_chunks(vid_names, seqlen, stride):
@@ -60,7 +60,7 @@ class AMASS(Dataset):
         return self.get_single_item(index)
 
     def load_db(self):
-        db_file = osp.join(VIBE_DB_DIR, 'amass_db.pt')
+        db_file = osp.join(VIBE_DB_DIR, 'amass_db_ori.pt')
         db = joblib.load(db_file)
         return db
 
