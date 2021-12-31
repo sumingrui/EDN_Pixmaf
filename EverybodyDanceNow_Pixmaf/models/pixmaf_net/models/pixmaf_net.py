@@ -204,9 +204,6 @@ class PixMAF(nn.Module):
         # if cfg.MODEL.PyMAF.AUX_SUPV_ON:
         #     self.dp_head = IUV_predict_layer(feat_dim=dp_feat_dim)
 
-        # 添加剪影 silhouette loss
-        #if cfg.PixMAF.USE_SILHOUETTE:
-
     def _make_deconv_layer(self):
         return Up_Sampling()
 
@@ -296,7 +293,6 @@ class PixMAF(nn.Module):
             assert cfg.PixMAF.N_ITER == 4
             smpl_output = self.regressor[0].forward_init(s_feat, res, J_regressor=J_regressor)
             out_list['smpl_out'] = [smpl_output]
-            out_list['silhouette'] = []
             
         # for visulization
         # vis_feat_list = [s_feat.detach()]

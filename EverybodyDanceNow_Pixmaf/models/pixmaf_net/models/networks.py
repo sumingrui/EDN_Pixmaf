@@ -152,6 +152,8 @@ class Pixmaf_Loss():
         self.criterion_keypoints = nn.MSELoss(reduction='none').to(self.device)
         self.kp2d_loss_dict = {}
         self.cam_loss_dict = {}
+        self.enc_loss = batch_encoder_disc_l2_loss
+        self.dec_loss = batch_adv_disc_l2_loss
 
     # for openpose
     def keypoint_loss(self, pred_keypoints_2d, gt_keypoints_2d, openpose_weight=1.0, gt_weight=0.0):
@@ -210,7 +212,25 @@ class Pixmaf_Loss():
 
         return kp2d_loss, cam_loss
 
-    # 考虑crop_res = 384
+    # for motion_discriminator
+    def get_motion_disc_loss(self, pred_motion, motion_discriminator, data_motion_mosh):
+        # pred_motion [1,2,85] [batchsize,sequence_len,theta]
+        end_idx = 75
+        start_idx = 6
+        g_motion_disc_loss = self.enc_loss(motion_discriminator(pred_motion[:, :, start_idx:end_idx]))
+        g_motion_disc_loss = g_motion_disc_loss * cfg.LOSS.D_MOTION_LOSS_W
+
+        fake_motion = pred_motion.detach()
+        real_motion = data_motion_mosh['theta']
+        fake_disc_value = motion_discriminator(fake_motion[:, :, start_idx:end_idx])
+        real_disc_value = motion_discriminator(real_motion[:, :, start_idx:end_idx])
+        _, _, d_motion_disc_loss = self.dec_loss(real_disc_value, fake_disc_value)
+        d_motion_disc_loss = d_motion_disc_loss * cfg.LOSS.D_MOTION_LOSS_W
+
+        return g_motion_disc_loss, d_motion_disc_loss
+
+
+    # for silhouette 考虑crop_res = 384
     def get_silhouette_loss(self, crop_img, smpl_out, crop_res=384, batch_size=1, device='cuda'):
         smpl = SMPL(SMPL_MODEL_DIR, batch_size=batch_size, create_transl=False).to(device)
         pred_rotmat = smpl_out['rotmat']
@@ -302,6 +322,25 @@ class Silhouette_model(nn.Module):
         # render_silhouettes
         silhouettes_img =  self.renderer(vertices, self.faces, textures=self.textures, mode='silhouettes',K=K, R=R, t=t)  
         return silhouettes_img
+
+
+def batch_encoder_disc_l2_loss(disc_value):
+    '''
+        Inputs:
+            disc_value: N x 25
+    '''
+    k = disc_value.shape[0]
+    return torch.sum((disc_value - 1.0) ** 2) * 1.0 / k
+
+def batch_adv_disc_l2_loss(real_disc_value, fake_disc_value):
+    '''
+        Inputs:
+            disc_value: N x 25
+    '''
+    ka = real_disc_value.shape[0]
+    kb = fake_disc_value.shape[0]
+    lb, la = torch.sum(fake_disc_value ** 2) / kb, torch.sum((real_disc_value - 1) ** 2) / ka
+    return la, lb, la + lb  
             
 ###############################################################################
 # Render

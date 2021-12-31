@@ -12,6 +12,8 @@ from . import networks
 
 # Pixmaf
 from .pixmaf_net.models.networks import Pixmaf_Loss, Silhouette_model
+from .pixmaf_net.models.motion_discriminator import MotionDiscriminator
+from .pixmaf_net.core.cfgs import cfg
 
 class Pix2PixHDModel(BaseModel):
     def name(self):
@@ -62,7 +64,20 @@ class Pix2PixHDModel(BaseModel):
                                       n_blocks_local=0, norm=opt.norm, gpu_ids=self.gpu_ids)
             else:
                 raise('face generator not implemented!')
-            
+
+        # Body SMPL AMASS discriminator network
+        if self.opt.use_pixmaf: 
+            self.netDmotion = MotionDiscriminator(
+                rnn_size=cfg.TRAIN.MOT_DISCR.HIDDEN_SIZE,
+                input_size=69,
+                num_layers=cfg.TRAIN.MOT_DISCR.NUM_LAYERS,
+                output_size=1,
+                feature_pool=cfg.TRAIN.MOT_DISCR.FEATURE_POOL,
+                attention_size=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.SIZE,
+                attention_layers=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.LAYERS,
+                attention_dropout=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.DROPOUT
+            ).to(cfg.DEVICE)
+      
         print('---------- Networks initialized -------------')
 
         # load networks
@@ -332,10 +347,21 @@ class Pix2PixHDModel(BaseModel):
         # 加入silhouette loss
         loss_G_silhouette = 0
         if self.opt.use_pixmaf:      
-            # 计算剪影lo
+            # 计算剪影loss
             silhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),S_0[-1])
             silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),S_1[-1])
             loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5  
+
+        # 加入motion_discriminator
+        loss_G_motion = 0
+        loss_D_motion = 0
+        if self.opt.use_pixmaf:  
+            print(S_0[-1]['theta'].shape)
+            pred_motion = torch.stack((S_0[-1]['theta'],S_1[-1]['theta']),dim=0).squeeze(0)
+            print(pred_motion.shape)
+            exit()
+            loss_G_motion, loss_D_motion = self.criterionPixmaf.get_motion_disc_loss(pred_motion, motion_discriminator, data_motion_mosh)
+
 
         # Only return the fake_B image if necessary to save BW
         return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, loss_G_silhouette, \

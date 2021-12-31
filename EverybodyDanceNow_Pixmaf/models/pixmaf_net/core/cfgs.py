@@ -21,29 +21,25 @@ from yacs.config import CfgNode as CN
 # Configuration variables
 cfg = CN(new_allowed=True)
 
-cfg.OUTPUT_DIR = 'results'
 cfg.DEVICE = 'cuda'
-cfg.DEBUG = False
-cfg.LOGDIR = ''
-cfg.VAL_VIS_BATCH_FREQ = 200
-cfg.TRAIN_VIS_ITER_FERQ = 1000
-cfg.SEED_VALUE = -1
 
 cfg.TRAIN = CN(new_allowed=True)
+# <====== motion discriminator optimizer
+cfg.TRAIN.MOT_DISCR = CN()
+cfg.TRAIN.MOT_DISCR.OPTIM = 'Adam'
+cfg.TRAIN.MOT_DISCR.LR = 0.0001
+cfg.TRAIN.MOT_DISCR.WD = 0.0001
+cfg.TRAIN.MOT_DISCR.MOMENTUM = 0.9
+cfg.TRAIN.MOT_DISCR.UPDATE_STEPS = 1
+cfg.TRAIN.MOT_DISCR.FEATURE_POOL = 'attention'
+cfg.TRAIN.MOT_DISCR.HIDDEN_SIZE = 1024
+cfg.TRAIN.MOT_DISCR.NUM_LAYERS = 2
+cfg.TRAIN.MOT_DISCR.ATT = CN()
+cfg.TRAIN.MOT_DISCR.ATT.SIZE = 1024
+cfg.TRAIN.MOT_DISCR.ATT.LAYERS = 3
+cfg.TRAIN.MOT_DISCR.ATT.DROPOUT = 0.2
 
-
-cfg.MODEL = CN(new_allowed=True)
-
-cfg.MODEL.PyMAF = CN(new_allowed=True)
-
-## switch
-cfg.TRAIN.VAL_LOOP = True
-
-cfg.TEST = CN(new_allowed=True)
-
-
-
-
+# cfg pixmaf
 cfg.PixMAF = CN(new_allowed=True)
 cfg.PixMAF.USE_PIXMAF = True
 cfg.PixMAF.N_ITER = 4
@@ -55,8 +51,7 @@ cfg.PixMAF.USE_SILHOUETTE = True
 cfg.LOSS = CN(new_allowed=True)
 cfg.LOSS.KP_2D_W = 100.0
 cfg.LOSS.SILHOUETTES_W = 0.00001
-
-
+cfg.LOSS.D_MOTION_LOSS_W = 1.
 
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values for my_project."""
@@ -68,7 +63,6 @@ def get_cfg_defaults():
 def update_cfg(cfg_file):
     cfg.merge_from_file(cfg_file)
     return cfg
-
 
 def parse_args(args):
     cfg_file = args.cfg_file

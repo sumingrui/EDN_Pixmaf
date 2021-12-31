@@ -44,6 +44,7 @@ print('#training images = %d' % dataset_size)
 
 """ new residual model """
 model = create_model_fullts(opt)
+model.train()
 visualizer = Visualizer(opt)
 
 total_steps = (start_epoch-1) * dataset_size + epoch_iter    
