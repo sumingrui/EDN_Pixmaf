@@ -18,12 +18,17 @@ import os
 import json
 from yacs.config import CfgNode as CN
 
+VIBE_DB_DIR = 'data/vibe_db'
+
 # Configuration variables
 cfg = CN(new_allowed=True)
 
 cfg.DEVICE = 'cuda'
+cfg.NUM_WORKERS= 2
 
 cfg.TRAIN = CN(new_allowed=True)
+cfg.TRAIN.BATCH_SIZE= 1
+
 # <====== motion discriminator optimizer
 cfg.TRAIN.MOT_DISCR = CN()
 cfg.TRAIN.MOT_DISCR.OPTIM = 'Adam'
@@ -38,6 +43,9 @@ cfg.TRAIN.MOT_DISCR.ATT = CN()
 cfg.TRAIN.MOT_DISCR.ATT.SIZE = 1024
 cfg.TRAIN.MOT_DISCR.ATT.LAYERS = 3
 cfg.TRAIN.MOT_DISCR.ATT.DROPOUT = 0.2
+
+cfg.DATASET = CN()
+cfg.DATASET.SEQLEN = 2
 
 # cfg pixmaf
 cfg.PixMAF = CN(new_allowed=True)

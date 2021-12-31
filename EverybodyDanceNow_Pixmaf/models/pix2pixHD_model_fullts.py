@@ -110,8 +110,9 @@ class Pix2PixHDModel(BaseModel):
             self.criterionPixmaf = Pixmaf_Loss()
         
             # Loss names
-            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', 'G_SIL', \
-                                'D_real', 'D_fake', 'G_GANface', 'D_realface', 'D_fakeface']
+            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', 'G_SIL', 'G_MOTION',\
+                                'D_real', 'D_fake', 'D_MOTION',\
+                                'G_GANface', 'D_realface', 'D_fakeface']
 
             # initialize optimizers
             # optimizer G
@@ -145,7 +146,10 @@ class Pix2PixHDModel(BaseModel):
                 if opt.face_discrim:
                     params = list(self.netD.parameters()) + list(self.netDface.parameters())   
                 else:
-                    params = list(self.netD.parameters())                  
+                    params = list(self.netD.parameters())   
+
+            if self.opt.use_pixmaf: 
+                params += list(self.netDmotion.parameters())                 
 
             self.optimizer_D = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
@@ -208,7 +212,7 @@ class Pix2PixHDModel(BaseModel):
     
 
     def forward(self, label, next_label, image, next_image, face_coords, zeroshere, \
-                other_params, next_other_params, infer=False):
+                other_params, next_other_params, data_motion_mosh, infer=False):
         # Encode Inputs
         input_label, real_image, next_label, next_image, zeroshere, other_params, next_other_params = self.encode_input(label, image, \
                      next_label=next_label, next_image=next_image, zeroshere=zeroshere, \
@@ -356,16 +360,13 @@ class Pix2PixHDModel(BaseModel):
         loss_G_motion = 0
         loss_D_motion = 0
         if self.opt.use_pixmaf:  
-            print(S_0[-1]['theta'].shape)
-            pred_motion = torch.stack((S_0[-1]['theta'],S_1[-1]['theta']),dim=0).squeeze(0)
-            print(pred_motion.shape)
-            exit()
-            loss_G_motion, loss_D_motion = self.criterionPixmaf.get_motion_disc_loss(pred_motion, motion_discriminator, data_motion_mosh)
+            pred_motion = torch.cat((S_0[-1]['theta'],S_1[-1]['theta']),dim=0).unsqueeze(0)
+            loss_G_motion, loss_D_motion = self.criterionPixmaf.get_motion_disc_loss(pred_motion, self.netDmotion, data_motion_mosh)
 
 
         # Only return the fake_B image if necessary to save BW
-        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, loss_G_silhouette, \
-                    loss_D_real, loss_D_fake, \
+        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, loss_G_silhouette, loss_G_motion,\
+                    loss_D_real, loss_D_fake, loss_D_motion,\
                     loss_G_GAN_face, loss_D_real_face,  loss_D_fake_face], \
                         None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0, \
                                                 [S_0[-1], S_1[-1]] ] ]

@@ -14,7 +14,7 @@ from torch.autograd import Variable
 import cv2
 
 from models.pixmaf_net.core.cfgs import cfg,parse_args_extend
-from models.pixmaf_net.models.networks import render_smpl
+from models.pixmaf_net.models.networks import render_smpl, move_dict_to_device
 
 opt = TrainOptions().parse()
 parse_args_extend(opt)
@@ -37,10 +37,13 @@ if opt.debug:
     opt.niter_decay = 0
     opt.max_dataset_size = 10
 
-data_loader = CreateDataLoader(opt)
+data_loader, disc_motion_loader = CreateDataLoader(opt, cfg)
 dataset = data_loader.load_data()
 dataset_size = len(data_loader)
 print('#training images = %d' % dataset_size)
+
+# motion dataset iter
+disc_motion_iter = iter(disc_motion_loader)
 
 """ new residual model """
 model = create_model_fullts(opt)
@@ -83,6 +86,14 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         torch.Size([1, 25, 3])
         '''
 
+        try:
+            real_motion_samples = next(disc_motion_iter)
+        except StopIteration:
+            disc_motion_iter = iter(disc_motion_loader)
+            real_motion_samples = next(disc_motion_iter)
+
+        move_dict_to_device(real_motion_samples, cfg.DEVICE)
+
         no_nexts = data['next_label'].dim() > 1 #check if has a next label (last training pair does not have a next label)
 
         if no_nexts:
@@ -90,16 +101,18 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             losses, generated = model(Variable(data['label']), Variable(data['next_label']), Variable(data['image']), \
                     Variable(data['next_image']), Variable(data['face_coords']), Variable(cond_zeros), \
-                    data['other_params'], data['next_other_params'], infer=True)
+                    data['other_params'], data['next_other_params'], real_motion_samples, infer=True)
 
             # sum per device losses
             losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
             loss_dict = dict(zip(model.module.loss_names, losses))
 
             # calculate final loss scalar
-            loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
+            loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + loss_dict['D_MOTION'] +\
+                        (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
+
             loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface'] \
-                        + loss_dict['G_2DKP'] + loss_dict['G_CAM'] + loss_dict['G_SIL']
+                        + loss_dict['G_2DKP'] + loss_dict['G_CAM'] + loss_dict['G_SIL'] + loss_dict['G_MOTION']
 
             ############### Backward Pass ####################
             # update generator weights
@@ -114,8 +127,6 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
-            
-
             ############## Display results and errors ##########
             ### print out errors
             ### 100 epochs打印一次
@@ -129,18 +140,20 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 visualizer.print_current_errors(epoch, epoch_iter, errors, t)
                 visualizer.plot_current_errors(errors, total_steps)
 
-                # render SMPL
-                human_mesh_img = render_smpl(generated[4][0], data['other_params']['bboxes'], data['image'], 500, 500)
-                web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
-                img_dir = os.path.join(web_dir, 'images')
-                cv2.imwrite(os.path.join(img_dir, 'test.png'), human_mesh_img)
-
-                
             ### display output images
             if save_fake:
                 syn = generated[0].data[0]
+                print('--------------------------------')
+                print(syn.shape)
                 inputs = torch.cat((data['label'], data['next_label']), dim=3)
+                print(data['label'].shape)
+                print(inputs.shape)
                 targets = torch.cat((data['image'], data['next_image']), dim=3)
+                # render SMPL
+                render_img0 = render_smpl(generated[4][0], data['other_params']['bboxes'])
+                print(render_img0.shape)
+
+
                 visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
                                            ('synthesized_image', util.tensor2im(syn)),
                                            ('real_image', util.tensor2im(targets[0]))])

@@ -11,7 +11,7 @@ from .smpl import SMPL, SMPL_MODEL_DIR, get_smpl_faces
 from ..utils.geometry import perspective_projection
 from ..core.cfgs import cfg
 from ..core import path_config
-from ..utils.renderer import PyRenderer
+from .pred_cam_to_orig_cam import convert_crop_cam_to_orig_img, Renderer
 
 ###############################################################################
 # Functions
@@ -33,6 +33,14 @@ def get_norm_layer(norm_type='instance'):
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
+
+def move_dict_to_device(dict, device, tensor2float=False):
+    for k,v in dict.items():
+        if isinstance(v, torch.Tensor):
+            if tensor2float:
+                dict[k] = v.float().to(device)
+            else:
+                dict[k] = v.to(device)
 
 ###############################################################################
 # Downsampling and Upsampling
@@ -346,90 +354,28 @@ def batch_adv_disc_l2_loss(real_disc_value, fake_disc_value):
 # Render
 ###############################################################################
 
-def render_smpl(smpl_output, bboxes, img, orig_width, orig_height):
+def render_smpl(smpl_output, bboxes, img=torch.zeros((512,1024)), orig_width=1024, orig_height=512):
     bboxes = bboxes.numpy()
     # img = img.numpy().transpose(0,2,3,1)
     pred_camera = smpl_output['theta'][:, :3].cpu().detach().numpy()
     pred_vertices = smpl_output['verts'].cpu().detach().numpy()
 
-    # print(bboxes.shape)
-    # # print(img.shape)
-    # print(pred_camera.shape)
-    # print(pred_vertices.shape)
-
-    # orig_cam = convert_crop_cam_to_orig_img(
-    #             cam=pred_camera,
-    #             bbox=bboxes,
-    #             img_width=orig_width,
-    #             img_height=orig_height
-    #         )
-
-    # render
-    img = np.zeros((500,500,3))
-    color_type = 'purple'
-    mesh_filename = None
-    renderer = PyRenderer(resolution=(orig_width, orig_height))
-    img = renderer(
-        pred_vertices.squeeze(0),
-        img=img,
-        cam=pred_camera.squeeze(0),
-        color_type=color_type,
-        mesh_filename=mesh_filename
-    )
-
-    side_img = np.zeros_like(img)
-
-    side_img = renderer(
-        pred_vertices.squeeze(0),
-        img=side_img,
-        cam=pred_camera.squeeze(0),
-        color_type=color_type,
-        angle=270,
-        axis=[0,1,0],
-    )
-
-    total_img = np.concatenate([img, side_img], axis=1)
-    
-    return total_img
-
-
-
-def convert_crop_cam_to_orig_img(cam, bbox, img_width, img_height):
-    '''
-    Convert predicted camera from cropped image coordinates
-    to original image coordinates
-    :param cam (ndarray, shape=(3,)): weak perspective camera in cropped img coordinates
-    :param bbox (ndarray, shape=(4,)): bbox coordinates (c_x, c_y, h)
-    :param img_width (int): original image width
-    :param img_height (int): original image height
-    :return:
-    '''
-    cx, cy, h = bbox[:,0], bbox[:,1], bbox[:,2]
-    hw, hh = img_width / 2., img_height / 2.
-    sx = cam[:,0] * (1. / (img_width / h))
-    sy = cam[:,0] * (1. / (img_height / h))
-    tx = ((cx - hw) / hw / sx) + cam[:,1]
-    ty = ((cy - hh) / hh / sy) + cam[:,2]
-    orig_cam = np.stack([sx, sy, tx, ty]).T
-    return orig_cam
-
-
-def prepare_rendering_results(vibe_results, nframes):
-    frame_results = [{} for _ in range(nframes)]
-    for person_id, person_data in vibe_results.items():
-        for idx, frame_id in enumerate(person_data['frame_ids']):
-            frame_results[frame_id][person_id] = {
-                'verts': person_data['verts'][idx],
-                'cam': person_data['orig_cam'][idx],
-                # 'cam': person_data['pred_cam'][idx],
-            }
-
-    # naive depth ordering based on the scale of the weak perspective camera
-    for frame_id, frame_data in enumerate(frame_results):
-        # sort based on y-scale of the cam in original image coords
-        sort_idx = np.argsort([v['cam'][1] for k,v in frame_data.items()])
-        frame_results[frame_id] = OrderedDict(
-            {list(frame_data.keys())[i]:frame_data[list(frame_data.keys())[i]] for i in sort_idx}
+    orig_cam = convert_crop_cam_to_orig_img(
+            cam=pred_camera,
+            bbox=bboxes,
+            img_width=orig_width,
+            img_height=orig_height
         )
 
-    return frame_results
+    # render
+    renderer = Renderer(resolution=(orig_width, orig_height), orig_img=True, wireframe=True)
+    mesh_filename = None
+    img_render = renderer.render(
+                    img,
+                    pred_vertices,
+                    cam=orig_cam,
+                    color=(0,255,0),
+                    mesh_filename=mesh_filename,
+                )
+   
+    return img_render
