@@ -354,11 +354,22 @@ def batch_adv_disc_l2_loss(real_disc_value, fake_disc_value):
 # Render
 ###############################################################################
 
-def render_smpl(smpl_output, bboxes, img=torch.zeros((512,1024)), orig_width=1024, orig_height=512):
+def render_smpl(smpl_output, bboxes, imgs, orig_width=1024, orig_height=512):
+    '''
+    bboxes (2,4)
+    pred_camera (2,3)
+    pred_vertices (2,6890,3)
+    '''
     bboxes = bboxes.numpy()
     # img = img.numpy().transpose(0,2,3,1)
-    pred_camera = smpl_output['theta'][:, :3].cpu().detach().numpy()
-    pred_vertices = smpl_output['verts'].cpu().detach().numpy()
+    pred_camera = torch.cat((smpl_output[0]['theta'][:, :3],smpl_output[1]['theta'][:, :3]),dim=0).cpu().detach().numpy()
+    pred_vertices = torch.cat((smpl_output[0]['verts'],smpl_output[1]['verts']),dim=0).cpu().detach().numpy()
+
+    print(bboxes.shape)
+    print(pred_camera.shape)
+    print(pred_vertices.shape)
+    print(imgs[0].shape)
+    print(imgs[1].shape)
 
     orig_cam = convert_crop_cam_to_orig_img(
             cam=pred_camera,

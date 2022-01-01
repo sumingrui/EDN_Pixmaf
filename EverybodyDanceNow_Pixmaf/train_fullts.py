@@ -150,8 +150,9 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 print(inputs.shape)
                 targets = torch.cat((data['image'], data['next_image']), dim=3)
                 # render SMPL
-                render_img0 = render_smpl(generated[4][0], data['other_params']['bboxes'])
-                print(render_img0.shape)
+                render_img = render_smpl(generated[4], torch.cat((data['other_params']['bboxes'],data['next_other_params']['bboxes']),dim=0), \
+                                            [util.tensor2im(data['image'][0]),util.tensor2im(data['next_image'][0])])
+                print(render_img.shape)
 
 
                 visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),

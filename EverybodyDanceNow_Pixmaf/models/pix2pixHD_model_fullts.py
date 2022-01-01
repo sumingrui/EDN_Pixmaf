@@ -77,6 +77,8 @@ class Pix2PixHDModel(BaseModel):
                 attention_layers=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.LAYERS,
                 attention_dropout=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.DROPOUT
             ).to(cfg.DEVICE)
+            
+            print(self.netDmotion)
       
         print('---------- Networks initialized -------------')
 
