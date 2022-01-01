@@ -365,12 +365,6 @@ def render_smpl(smpl_output, bboxes, imgs, orig_width=512, orig_height=256):
     pred_camera = torch.cat((smpl_output[0]['theta'][:, :3],smpl_output[1]['theta'][:, :3]),dim=0).cpu().detach().numpy()
     pred_vertices = torch.cat((smpl_output[0]['verts'],smpl_output[1]['verts']),dim=0).cpu().detach().numpy()
 
-    print(bboxes.shape)
-    print(pred_camera.shape)
-    print(pred_vertices.shape)
-    print(imgs[0].shape)
-    print(imgs[1].shape)
-
     orig_cam = convert_crop_cam_to_orig_img(
             cam=pred_camera,
             bbox=bboxes,

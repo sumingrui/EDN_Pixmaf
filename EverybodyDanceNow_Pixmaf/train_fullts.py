@@ -144,11 +144,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             if save_fake:
             # if total_steps==10:
                 syn = generated[0].data[0]
-                print('--------------------------------')
-                print(syn.shape)
                 inputs = torch.cat((data['label'], data['next_label']), dim=3)
-                print(data['label'].shape)
-                print(inputs.shape)
                 targets = torch.cat((data['image'], data['next_image']), dim=3)
                 # render SMPL
                 render_img_0, render_img_1 = render_smpl(generated[4], torch.cat((data['other_params']['bboxes'],data['next_other_params']['bboxes']),dim=0), \
