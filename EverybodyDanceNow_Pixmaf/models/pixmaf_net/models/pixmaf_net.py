@@ -236,8 +236,8 @@ class PixMAF(nn.Module):
 
         # 修改成不需要grid_sample的过程
         from math import floor
-        h = 512
-        w = 1024
+        h = 256
+        w = 512
 
         x1 = bbox[0]-bbox[2]/2
         y1 = bbox[1]-bbox[2]/2

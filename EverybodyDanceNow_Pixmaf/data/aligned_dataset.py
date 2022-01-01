@@ -64,7 +64,8 @@ class AlignedDataset(BaseDataset):
             image_tensor = transform_image(image).float()
 
             # 添加bbox
-            other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([1., 1., 1.1, 1.1])) # torch.Size([1, 4])
+            # 针对[256,512]，要减半
+            other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([0.5, 0.5, 0.55, 0.55])) # torch.Size([1, 4])
 
             other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] # torch.Size([1, 3])
             other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
@@ -103,7 +104,7 @@ class AlignedDataset(BaseDataset):
                 next_image = transform_image(image).float()
 
                 # 添加bbox
-                next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([1., 1., 1.1, 1.1])) #(4,)
+                next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([0.5, 0.5, 0.55, 0.55])) #(4,)
             
                 next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] #(3,)
                 next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index+1]

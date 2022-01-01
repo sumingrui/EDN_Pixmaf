@@ -354,7 +354,7 @@ def batch_adv_disc_l2_loss(real_disc_value, fake_disc_value):
 # Render
 ###############################################################################
 
-def render_smpl(smpl_output, bboxes, imgs, orig_width=1024, orig_height=512):
+def render_smpl(smpl_output, bboxes, imgs, orig_width=512, orig_height=256):
     '''
     bboxes (2,4)
     pred_camera (2,3)
