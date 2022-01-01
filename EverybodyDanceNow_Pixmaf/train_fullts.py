@@ -141,8 +141,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 visualizer.plot_current_errors(errors, total_steps)
 
             ### display output images
-            # if save_fake:
-            if total_steps==10:
+            if save_fake:
+            # if total_steps==10:
                 syn = generated[0].data[0]
                 print('--------------------------------')
                 print(syn.shape)
