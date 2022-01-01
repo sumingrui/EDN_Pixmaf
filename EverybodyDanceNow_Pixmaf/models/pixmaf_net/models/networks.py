@@ -381,12 +381,20 @@ def render_smpl(smpl_output, bboxes, imgs, orig_width=1024, orig_height=512):
     # render
     renderer = Renderer(resolution=(orig_width, orig_height), orig_img=True, wireframe=True)
     mesh_filename = None
-    img_render = renderer.render(
-                    img,
-                    pred_vertices,
-                    cam=orig_cam,
+    img_render_0 = renderer.render(
+                    imgs[0],
+                    pred_vertices[0],
+                    cam=orig_cam[0],
+                    color=(0,255,0),
+                    mesh_filename=mesh_filename,
+                )
+
+    img_render_1 = renderer.render(
+                    imgs[1],
+                    pred_vertices[1],
+                    cam=orig_cam[1],
                     color=(0,255,0),
                     mesh_filename=mesh_filename,
                 )
    
-    return img_render
+    return img_render_0, img_render_1

@@ -151,10 +151,13 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 print(inputs.shape)
                 targets = torch.cat((data['image'], data['next_image']), dim=3)
                 # render SMPL
-                render_img = render_smpl(generated[4], torch.cat((data['other_params']['bboxes'],data['next_other_params']['bboxes']),dim=0), \
+                render_img_0, render_img_1 = render_smpl(generated[4], torch.cat((data['other_params']['bboxes'],data['next_other_params']['bboxes']),dim=0), \
                                             [util.tensor2im(data['image'][0]),util.tensor2im(data['next_image'][0])])
-                print(render_img.shape)
-
+                
+                web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
+                img_dir = os.path.join(web_dir, 'images')
+                cv2.imwrite(os.path.join(img_dir, 'human_smpl_0_%d_%d.png'%(epoch,total_steps)), render_img_0)
+                cv2.imwrite(os.path.join(img_dir, 'human_smpl_1_%d_%d.png'%(epoch,total_steps)), render_img_1)
 
                 visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
                                            ('synthesized_image', util.tensor2im(syn)),
