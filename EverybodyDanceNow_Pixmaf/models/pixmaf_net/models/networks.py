@@ -1,6 +1,7 @@
 ### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
 ### From PIX2PIXHD
 
+from tokenize import Exponent
 import torch
 import torch.nn as nn
 import numpy as np
@@ -268,11 +269,27 @@ class Pixmaf_Loss():
 
             # 点在1上
             if a!=0 and b==0:
-                l1 += self._caldist_l1(diff_index[i].float(),silhouettes_img_index.float())
+                try:    
+                    l1 += self._caldist_l1(diff_index[i].float(),silhouettes_img_index.float())
+                except:
+                    print('------------------SIL L1 ERROR------------------')
+                    print('a: ',a)
+                    print('b: ',b)
+                    print('diff_index[i]: ',diff_index[i].float())
+                    print('silhouettes_img_index: ',silhouettes_img_index.shape)
+                    print('-----------------------END-----------------------')
         
             # 点在2上
             elif a==0 and b!= 0:
-                l2_squared += self._caldist_squared_l2(diff_index[i].float(),crop_img_index.float())
+                try:
+                    l2_squared += self._caldist_squared_l2(diff_index[i].float(),crop_img_index.float())
+                except:
+                    print('------------------SIL L2 ERROR------------------')
+                    print('a: ',a)
+                    print('b: ',b)
+                    print('diff_index[i]: ',diff_index[i].float())
+                    print('crop_img_index: ',crop_img_index.shape)
+                    print('-----------------------END-----------------------')
 
             else:
                 print('Error')

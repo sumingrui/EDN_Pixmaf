@@ -354,8 +354,12 @@ class Pix2PixHDModel(BaseModel):
         loss_G_silhouette = 0
         if self.opt.use_pixmaf:      
             # 计算剪影loss
-            silhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),S_0[-1])
-            silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),S_1[-1])
+            silhouette_loss0 = 0
+            silhouette_loss1 = 0
+            for smpl_out in S_0:
+                silhouette_loss0 += self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),smpl_out)
+            for smpl_out in S_1:
+                silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),smpl_out)
             loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5  
 
         # 加入motion_discriminator
