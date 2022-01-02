@@ -390,7 +390,7 @@ def render_smpl(smpl_output, bboxes, imgs, orig_width=512, orig_height=256):
         )
 
     # render
-    renderer = Renderer(resolution=(orig_width, orig_height), orig_img=True, wireframe=True)
+    renderer = Renderer(resolution=(orig_width, orig_height), orig_img=True, wireframe=False)
     mesh_filename = None
     img_render_0 = renderer.render(
                     imgs[0],
