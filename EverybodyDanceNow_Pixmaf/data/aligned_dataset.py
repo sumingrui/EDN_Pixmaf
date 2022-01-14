@@ -67,11 +67,11 @@ class AlignedDataset(BaseDataset):
             # 针对[256,512]，要减半
             other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([0.5, 0.5, 0.55, 0.55])) # torch.Size([1, 4])
 
+            # ununsed
             other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] # torch.Size([1, 3])
             other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
             other_params['pose'] = self.vibe_results[1]['pose'][index] # torch.Size([1, 72])
-            other_params['betas'] = self.vibe_results[1]['betas'][index] # torch.Size([1, 10])
-            # unused
+            other_params['betas'] = self.vibe_results[1]['betas'][index] # torch.Size([1, 10])   
             other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
             other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
             other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
@@ -105,12 +105,12 @@ class AlignedDataset(BaseDataset):
 
                 # 添加bbox
                 next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([0.5, 0.5, 0.55, 0.55])) #(4,)
-            
+
+                # ununsed
                 next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] #(3,)
                 next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index+1]
                 next_other_params['pose'] = self.vibe_results[1]['pose'][index+1] #(72,)
                 next_other_params['betas'] = self.vibe_results[1]['betas'][index+1] #(10,)
-                # unused
                 next_other_params['verts'] = self.vibe_results[1]['verts'][index+1] #(6890, 3)
                 next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index+1] #(49, 3)
                 next_other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index+1]

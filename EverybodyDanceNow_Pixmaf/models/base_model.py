@@ -1,6 +1,8 @@
 ### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
 ### Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 import os
+
+from numpy.core.arrayprint import set_string_function
 import torch
 import sys
 
@@ -87,7 +89,7 @@ class BaseModel(torch.nn.Module):
                             not_initialized.add(k.split('.')[0])
                     
                     print(sorted(not_initialized))
-                    network.load_state_dict(model_dict)                  
-
+                    network.load_state_dict(model_dict)                    
+    
     def update_learning_rate():
         pass

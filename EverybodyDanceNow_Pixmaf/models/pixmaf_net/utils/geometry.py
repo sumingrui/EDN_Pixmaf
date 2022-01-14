@@ -326,8 +326,9 @@ def estimate_translation(S, joints_2d, focal_length=5000., img_size=224.):
 
     device = S.device
     # Use only joints 25:49 (GT joints)
-    S = S[:, 25:, :].cpu().numpy()
-    joints_2d = joints_2d[:, 25:, :].cpu().numpy()
+    # Use only joints 0:25 (OPENPOSE joints)
+    S = S[:, 0:25, :].cpu().numpy()
+    joints_2d = joints_2d[:, 0:25, :].cpu().numpy()
     joints_conf = joints_2d[:, :, -1]
     joints_2d = joints_2d[:, :, :-1]
     trans = np.zeros((S.shape[0], 3), dtype=np.float32)

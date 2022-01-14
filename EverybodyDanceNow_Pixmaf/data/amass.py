@@ -61,6 +61,7 @@ class AMASS(Dataset):
 
     def load_db(self):
         db_file = osp.join(VIBE_DB_DIR, 'amass_db_ori.pt')
+        # db_file = osp.join(VIBE_DB_DIR, 'amass_db.pt')
         db = joblib.load(db_file)
         return db
 

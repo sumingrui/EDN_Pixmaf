@@ -9,9 +9,11 @@ import util.util as util
 from util.visualizer import Visualizer
 import os
 import numpy as np
+from PIL import Image
 import torch
 from torch.autograd import Variable
 import cv2
+import pickle
 
 from models.pixmaf_net.core.cfgs import cfg,parse_args_extend
 from models.pixmaf_net.models.networks import render_smpl, move_dict_to_device
@@ -37,13 +39,21 @@ if opt.debug:
     opt.niter_decay = 0
     opt.max_dataset_size = 10
 
-data_loader, disc_motion_loader = CreateDataLoader(opt, cfg)
+# model = create_model_fullts(opt)
+# model.train()
+# exit()
+
+if opt.use_pixmaf:  
+    data_loader, disc_motion_loader = CreateDataLoader(opt, cfg)
+    # motion dataset iter
+    disc_motion_iter = iter(disc_motion_loader)
+else:
+    data_loader = CreateDataLoader(opt, cfg)
 dataset = data_loader.load_data()
 dataset_size = len(data_loader)
 print('#training images = %d' % dataset_size)
 
-# motion dataset iter
-disc_motion_iter = iter(disc_motion_loader)
+
 
 """ new residual model """
 model = create_model_fullts(opt)
@@ -86,13 +96,13 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         torch.Size([1, 25, 3])
         '''
 
-        try:
-            real_motion_samples = next(disc_motion_iter)
-        except StopIteration:
-            disc_motion_iter = iter(disc_motion_loader)
-            real_motion_samples = next(disc_motion_iter)
-
-        move_dict_to_device(real_motion_samples, cfg.DEVICE)
+        if opt.use_pixmaf:  
+            try:
+                real_motion_samples = next(disc_motion_iter)
+            except StopIteration:
+                disc_motion_iter = iter(disc_motion_loader)
+                real_motion_samples = next(disc_motion_iter)
+            move_dict_to_device(real_motion_samples, cfg.DEVICE)
 
         no_nexts = data['next_label'].dim() > 1 #check if has a next label (last training pair does not have a next label)
 
@@ -108,11 +118,19 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             loss_dict = dict(zip(model.module.loss_names, losses))
 
             # calculate final loss scalar
+            '''
+                        self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', \
+                                'G_2DKP', 'G_CAM', 'G_SMPL', 'G_VERTS', \
+                                'G_SIL', 'G_MOTION', 'G_SHAPECOH', \
+                                'D_real', 'D_fake', 'D_MOTION',\
+                                'G_GANface', 'D_realface', 'D_fakeface']
+            '''
             loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + loss_dict['D_MOTION'] +\
                         (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
 
             loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface'] \
-                        + loss_dict['G_2DKP'] + loss_dict['G_CAM'] + loss_dict['G_SIL'] + loss_dict['G_MOTION']
+                        + loss_dict['G_2DKP'] + loss_dict['G_CAM'] + loss_dict['G_SMPL'] + loss_dict['G_VERTS']\
+                        + loss_dict['G_SIL'] + loss_dict['G_MOTION'] + loss_dict['G_SHAPECOH']
 
             ############### Backward Pass ####################
             # update generator weights
@@ -121,9 +139,14 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             model.module.optimizer_G.step()
 
             # update discriminator weights
-            model.module.optimizer_D.zero_grad()
-            loss_D.backward()
-            model.module.optimizer_D.step()
+            if total_steps % cfg.TRAIN.MOT_DISCR.UPDATESTEPS == 0:
+                model.module.optimizer_D.zero_grad()
+                loss_D.backward()
+                model.module.optimizer_D.step()
+            else:
+                model.module.optimizer_D_wo_motion.zero_grad()
+                loss_D.backward()
+                model.module.optimizer_D_wo_motion.step()
 
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
@@ -181,7 +204,13 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
             model.module.save('latest')            
             np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
-       
+            
+            file_best_fits = os.path.join(opt.dataroot, 'best_fits.pkl')  
+            with open(file_best_fits,'wb') as f:
+                pickle.dump(model.module.best_fits,f,pickle.HIGHEST_PROTOCOL)
+
+            print('At steps: %d, Update OPT data %d times'%(total_steps,model.module.countOPT))
+
     # end of epoch  
     iter_end_time = time.time()
     print('End of epoch %d / %d \t Time Taken: %d sec' %

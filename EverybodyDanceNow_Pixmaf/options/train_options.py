@@ -21,7 +21,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--niter', type=int, default=100, help='# of iter at starting learning rate')
         self.parser.add_argument('--niter_decay', type=int, default=100, help='# of iter to linearly decay learning rate to zero')
         self.parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of adam')
-        self.parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
+        self.parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
 
         # for discriminators        
         self.parser.add_argument('--num_D', type=int, default=2, help='number of discriminators to use')
@@ -40,9 +40,14 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lambda_F', type=float, default=1.0, help='weight flow loss')
 
         #for Pixmaf
+        self.parser.add_argument('--lr_factor', type=float, default=0.3, help='learning rate factor')
         pixmaf = self.parser.add_argument_group('pixmaf')
         pixmaf.add_argument('--use_pixmaf', action='store_true', help='Use pixmaf network')
         #pixmaf.add_argument('--log_dir', default='logs', help='Directory to store logs')
         pixmaf.add_argument('--cfg_file', type=str, default=None, help='config file path for PixMAF.')
+        pixmaf.add_argument('--lr_Dmotion', type=float, default=0.0001, help='initial learning rate for adam')
+        pixmaf.add_argument('--run_smplify', default=False, action='store_true', help='run SMPLify during training')
+        pixmaf.add_argument('--use_silhouette', default=False, action='store_true', help='use silhouette loss during training')
+        pixmaf.add_argument('--use_shapeCoherence', default=False, action='store_true', help='use shape coherence loss during training')
         
         self.isTrain = True

@@ -9,15 +9,19 @@ def CreateDataLoader(opt,cfg):
     data_loader.initialize(opt)
 
     # ===== Motion Discriminator dataset =====
-    motion_disc_db = AMASS(seqlen=cfg.DATASET.SEQLEN)
+    if opt.use_pixmaf:  
+        motion_disc_db = AMASS(seqlen=cfg.DATASET.SEQLEN)
 
-    motion_disc_loader = DataLoader(
-        dataset=motion_disc_db,
-        batch_size=cfg.TRAIN.BATCH_SIZE,
-        shuffle=True,
-        num_workers=cfg.NUM_WORKERS,
-    )
-    return data_loader, motion_disc_loader
+        motion_disc_loader = DataLoader(
+            dataset=motion_disc_db,
+            batch_size=cfg.TRAIN.BATCH_SIZE,
+            shuffle=True,
+            num_workers=cfg.NUM_WORKERS,
+        )
+        return data_loader, motion_disc_loader
+    
+    else:
+        return data_loader
 
 def CreateDataLoaderU(opt):
     from data.custom_dataset_data_loader import CustomDatasetDataLoaderU

@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import os
 from collections import OrderedDict
+import pickle
 from torch.autograd import Variable
 import util.util as util
 from util.image_pool import ImagePool
@@ -14,6 +15,9 @@ from . import networks
 from .pixmaf_net.models.networks import Pixmaf_Loss, Silhouette_model
 from .pixmaf_net.models.motion_discriminator import MotionDiscriminator
 from .pixmaf_net.core.cfgs import cfg
+from .pixmaf_net.utils.geometry import estimate_translation
+from .pixmaf_net.smplify import SMPLify
+from .pixmaf_net.core.constants import FOCAL_LENGTH
 
 class Pix2PixHDModel(BaseModel):
     def name(self):
@@ -24,6 +28,8 @@ class Pix2PixHDModel(BaseModel):
         if opt.resize_or_crop != 'none': # when training at full res this causes OOM
             torch.backends.cudnn.benchmark = True
         self.isTrain = opt.isTrain
+        # 记录使用SPIN方法是否有更新opt数据
+        self.countOPT = 0
 
         ##### define networks        
         # Generator network
@@ -66,7 +72,7 @@ class Pix2PixHDModel(BaseModel):
                 raise('face generator not implemented!')
 
         # Body SMPL AMASS discriminator network
-        if self.opt.use_pixmaf: 
+        if opt.use_pixmaf: 
             self.netDmotion = MotionDiscriminator(
                 rnn_size=cfg.TRAIN.MOT_DISCR.HIDDEN_SIZE,
                 input_size=69,
@@ -77,9 +83,17 @@ class Pix2PixHDModel(BaseModel):
                 attention_layers=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.LAYERS,
                 attention_dropout=None if cfg.TRAIN.MOT_DISCR.FEATURE_POOL !='attention' else cfg.TRAIN.MOT_DISCR.ATT.DROPOUT
             ).to(cfg.DEVICE)
-            
             print(self.netDmotion)
-      
+        
+            # Initialize SMPLify fitting module
+            self.smplify = SMPLify(step_size=1e-2, batch_size=cfg.SMPLIFY.BATCH_SIZE, num_iters=cfg.SMPLIFY.NUM_ITER, \
+                                    focal_length=FOCAL_LENGTH, device=cfg.DEVICE)
+            
+            # Initialize best fits
+            file_best_fits = os.path.join(opt.dataroot, 'best_fits.pkl')
+            with open(file_best_fits,'rb') as f:
+                self.best_fits = pickle.load(f)
+
         print('---------- Networks initialized -------------')
 
         # load networks
@@ -112,7 +126,9 @@ class Pix2PixHDModel(BaseModel):
             self.criterionPixmaf = Pixmaf_Loss()
         
             # Loss names
-            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', 'G_2DKP', 'G_CAM', 'G_SIL', 'G_MOTION',\
+            self.loss_names = ['G_GAN', 'G_GAN_Feat', 'G_VGG', \
+                                'G_2DKP', 'G_CAM', 'G_SMPL', 'G_VERTS', \
+                                'G_SIL', 'G_MOTION', 'G_SHAPECOH', \
                                 'D_real', 'D_fake', 'D_MOTION',\
                                 'G_GANface', 'D_realface', 'D_fakeface']
 
@@ -121,39 +137,57 @@ class Pix2PixHDModel(BaseModel):
             if opt.niter_fix_global > 0:
                 print('------------- Only training the local enhancer network (for %d epochs) ------------' % opt.niter_fix_global)
                 params_dict = dict(self.netG.named_parameters())
-                params = []
+                G_params = []
                 for key, value in params_dict.items():       
                     if key.startswith('model' + str(opt.n_local_enhancers)):
-                        params += [{'params':[value],'lr':opt.lr}]
+                        G_params += [{'params':[value],'lr':opt.lr}]
                     else:
-                        params += [{'params':[value],'lr':0.0}]                            
+                        G_params += [{'params':[value],'lr':0.0}]                            
             else:
-                params = list(self.netG.parameters())
+                G_params = list(self.netG.parameters())
 
             if opt.face_generator:
-                params = list(self.faceGen.parameters())
+                G_params = list(self.faceGen.parameters())
             else:
                 if opt.niter_fix_main == 0:
                     # TODO 这里有没有问题
                     pass
-                    params += list(self.netG.parameters())
+                    #G_params += list(self.netG.parameters())
             # 选择更新的参数
-            self.optimizer_G = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))                            
+            # self.optimizer_G = torch.optim.Adam(G_params, lr=opt.lr, betas=(opt.beta1, 0.999))
+
+            self.optimizer_G = torch.optim.Adam([
+                {'params': [param for name, param in self.netG.named_parameters() if (name.startswith('feature_extractor') or name.startswith('deconv_layers'))]},
+                {'params': [param for name, param in self.netG.named_parameters() if (name.startswith('maf_extractor') or name.startswith('regressor'))],'betas':(0.9, 0.999)}],
+                lr=opt.lr, 
+                betas=(opt.beta1, 0.999),
+                weight_decay=0,
+                )
 
             # optimizer D
             if opt.niter_fix_main > 0:
                 print('------------- Only training the face discriminator network (for %d epochs) ------------' % opt.niter_fix_main)
-                params = list(self.netDface.parameters())                         
+                D_params = list(self.netDface.parameters())                         
             else:
                 if opt.face_discrim:
-                    params = list(self.netD.parameters()) + list(self.netDface.parameters())   
+                    D_params = list(self.netD.parameters()) + list(self.netDface.parameters())   
                 else:
-                    params = list(self.netD.parameters())   
+                    D_params = list(self.netD.parameters())   
 
             if self.opt.use_pixmaf: 
-                params += list(self.netDmotion.parameters())                 
+                D_params_motion = list(self.netDmotion.parameters())                 
 
-            self.optimizer_D = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
+            # optimizer add D motion
+            self.optimizer_D = torch.optim.Adam([
+                {'params':D_params},
+                {'params':D_params_motion,'lr':opt.lr_Dmotion,'betas':(0.9, 0.999),'weight_decay':0.0001}],
+                lr=opt.lr, 
+                betas=(opt.beta1, 0.999),
+                weight_decay=0,
+                )
+
+            # optimizer without D motion
+            self.optimizer_D_wo_motion = torch.optim.Adam(D_params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
     def encode_input(self, label_map, real_image=None, next_label=None, next_image=None, zeroshere=None, \
                         other_params=None, next_other_params=None, infer=False):
@@ -336,32 +370,169 @@ class Pix2PixHDModel(BaseModel):
         if self.opt.use_l1:
             loss_G_VGG += (self.criterionL1(I_1, next_image)) * self.opt.lambda_A
 
-        # 加入2D keypoints loss
-        # TODO 检查shape是否正确
-        loss_G_2DKP = 0
+        # 开始pixMAF相关的loss的训练
+
+        # 从best_fits.pkl获得opt数据用于训练
+        blank_keypoints_2d = torch.zeros((1,24,3)).to(cfg.DEVICE)
+        gt_keypoints_2d_0 = torch.cat((other_params['openpose_kp_2d'],blank_keypoints_2d),dim=1) # torch.Size([1, 25, 3]) + torch.Size([1, 24, 3])
+        gt_keypoints_2d_1 = torch.cat((next_other_params['openpose_kp_2d'],blank_keypoints_2d),dim=1)
+        # gt_keypoints_2d_0 = other_params['openpose_kp_2d'] 
+        # gt_keypoints_2d_1 = next_other_params['openpose_kp_2d']
+
+        img_res_0 = int(other_params['bboxes'][0][2])
+        img_res_1 = int(next_other_params['bboxes'][0][2])
+
+        frame_id_0 = int(other_params['frame_ids'].cpu().detach().numpy())
+        frame_id_1 = int(next_other_params['frame_ids'].cpu().detach().numpy())
+
+        opt_pose_0 = torch.from_numpy(self.best_fits['pose'][frame_id_0]).to(cfg.DEVICE).unsqueeze(0) # torch.Size([1, 72])
+        opt_pose_1 = torch.from_numpy(self.best_fits['pose'][frame_id_1]).to(cfg.DEVICE).unsqueeze(0)
+
+        opt_beta_0 = torch.from_numpy(self.best_fits['betas'][frame_id_0]).to(cfg.DEVICE).unsqueeze(0) # torch.Size([1, 10])
+        opt_beta_1 = torch.from_numpy(self.best_fits['betas'][frame_id_1]).to(cfg.DEVICE).unsqueeze(0)
+
+        opt_joints_0 = torch.from_numpy(self.best_fits['joints3d'][frame_id_0]).to(cfg.DEVICE).unsqueeze(0) # torch.Size([1, 49, 3])
+        opt_joints_1 = torch.from_numpy(self.best_fits['joints3d'][frame_id_1]).to(cfg.DEVICE).unsqueeze(0)
+
+        opt_vertices_0 = torch.from_numpy(self.best_fits['verts'][frame_id_0]).to(cfg.DEVICE).unsqueeze(0) # torch.Size([1, 6890, 3])
+        opt_vertices_1 = torch.from_numpy(self.best_fits['verts'][frame_id_1]).to(cfg.DEVICE).unsqueeze(0)
+   
+        # 这里因为img_res不一样 因此只能一个一个算
+        opt_cam_t_0 = estimate_translation(opt_joints_0, gt_keypoints_2d_0, focal_length=FOCAL_LENGTH, img_size=img_res_0)
+        opt_cam_t_1 = estimate_translation(opt_joints_1, gt_keypoints_2d_1, focal_length=FOCAL_LENGTH, img_size=img_res_1)
+
+        # 得到reprojection_loss
+        opt_joint_loss_0 = self.smplify.get_fitting_loss(opt_pose_0, opt_beta_0, opt_cam_t_0,
+                                                       0.5 * img_res_0 * torch.ones(cfg.SMPLIFY.BATCH_SIZE, 2, device=cfg.DEVICE),
+                                                       gt_keypoints_2d_0).mean(dim=-1)
+        
+        opt_joint_loss_1 = self.smplify.get_fitting_loss(opt_pose_1, opt_beta_1, opt_cam_t_1,
+                                                       0.5 * img_res_1 * torch.ones(cfg.SMPLIFY.BATCH_SIZE, 2, device=cfg.DEVICE),
+                                                       gt_keypoints_2d_1).mean(dim=-1)
+        
+        if self.opt.run_smplify:
+            pred_pose_0 = S_0[-1]['theta'][:, 13:]
+            pred_pose_1 = S_1[-1]['theta'][:, 13:]
+            pred_beta_0 = S_0[-1]['pred_shape']
+            pred_beta_1 = S_1[-1]['pred_shape']
+            pred_cam_0 = S_0[-1]['theta'][:, :3]
+            pred_cam_1 = S_1[-1]['theta'][:, :3]
+            pred_cam_t_0 = torch.stack([pred_cam_0[:,1],
+                                    pred_cam_0[:,2],
+                                    2*FOCAL_LENGTH/(img_res_0 * pred_cam_0[:,0] +1e-9)],dim=-1)
+            pred_cam_t_1 = torch.stack([pred_cam_1[:,1],
+                                    pred_cam_1[:,2],
+                                    2*FOCAL_LENGTH/(img_res_1 * pred_cam_1[:,0] +1e-9)],dim=-1)
+            # De-normalize 2D keypoints from [-1,1] to pixel space
+            gt_keypoints_2d_orig_0 = gt_keypoints_2d_0.clone()
+            gt_keypoints_2d_orig_0[:, :, :-1] = 0.5 * img_res_0 * (gt_keypoints_2d_orig_0[:, :, :-1] + 1)
+            gt_keypoints_2d_orig_1 = gt_keypoints_2d_1.clone()
+            gt_keypoints_2d_orig_1[:, :, :-1] = 0.5 * img_res_1 * (gt_keypoints_2d_orig_1[:, :, :-1] + 1)
+
+            # ================= SMPL OUTPUT 0 =================
+            # Run SMPLify optimization starting from the network prediction
+            new_opt_vertices_0, new_opt_joints_0,\
+            new_opt_pose_0, new_opt_betas_0,\
+            new_opt_cam_t_0, new_opt_joint_loss_0 = self.smplify(
+                                        pred_pose_0.detach(), pred_beta_0.detach(),
+                                        pred_cam_t_0.detach(),
+                                        0.5 * img_res_0 * torch.ones(cfg.SMPLIFY.BATCH_SIZE, 2, device=cfg.DEVICE),
+                                        gt_keypoints_2d_orig_0)
+            new_opt_joint_loss_0 = new_opt_joint_loss_0.mean(dim=-1)
+
+            # Will update the dictionary for the examples where the new loss is less than the current one
+            update_0 = (new_opt_joint_loss_0 < opt_joint_loss_0) # tensor([False], device='cuda:0')
+
+            if update_0.detach().item():
+                opt_joint_loss_0[update_0] = new_opt_joint_loss_0[update_0]
+                opt_vertices_0[update_0, :] = new_opt_vertices_0[update_0, :]
+                opt_joints_0[update_0, :] = new_opt_joints_0[update_0, :]
+                opt_pose_0[update_0, :] = new_opt_pose_0[update_0, :]
+                opt_beta_0[update_0, :] = new_opt_betas_0[update_0, :]
+                opt_cam_t_0[update_0, :] = new_opt_cam_t_0[update_0, :]
+
+                self.best_fits['pose'][frame_id_0] = opt_pose_0.squeeze(0).cpu().detach().numpy()
+                self.best_fits['betas'][frame_id_0] = opt_beta_0.squeeze(0).cpu().detach().numpy()
+                self.best_fits['joints3d'][frame_id_0] = opt_joints_0.squeeze(0).cpu().detach().numpy()
+                self.best_fits['verts'][frame_id_0] = opt_vertices_0.squeeze(0).cpu().detach().numpy()
+
+                self.countOPT += 1
+
+            # ================= SMPL OUTPUT 1 =================
+            # Run SMPLify optimization starting from the network prediction
+            new_opt_vertices_1, new_opt_joints_1,\
+            new_opt_pose_1, new_opt_betas_1,\
+            new_opt_cam_t_1, new_opt_joint_loss_1 = self.smplify(
+                                        pred_pose_1.detach(), pred_beta_1.detach(),
+                                        pred_cam_t_1.detach(),
+                                        0.5 * img_res_1 * torch.ones(cfg.SMPLIFY.BATCH_SIZE, 2, device=cfg.DEVICE),
+                                        gt_keypoints_2d_orig_1)
+            new_opt_joint_loss_1 = new_opt_joint_loss_1.mean(dim=-1)
+
+            # Will update the dictionary for the examples where the new loss is less than the current one
+            update_1 = (new_opt_joint_loss_1 < opt_joint_loss_1) # tensor([False], device='cuda:0')
+
+            if update_1.detach().item():
+                opt_joint_loss_1[update_1] = new_opt_joint_loss_1[update_1]
+                opt_vertices_1[update_1, :] = new_opt_vertices_1[update_1, :]
+                opt_joints_1[update_1, :] = new_opt_joints_1[update_1, :]
+                opt_pose_1[update_1, :] = new_opt_pose_1[update_1, :]
+                opt_beta_1[update_1, :] = new_opt_betas_1[update_1, :]
+                opt_cam_t_1[update_1, :] = new_opt_cam_t_1[update_1, :]
+
+                self.best_fits['pose'][frame_id_1] = opt_pose_1.squeeze(0).cpu().detach().numpy()
+                self.best_fits['betas'][frame_id_1] = opt_beta_1.squeeze(0).cpu().detach().numpy()
+                self.best_fits['joints3d'][frame_id_1] = opt_joints_1.squeeze(0).cpu().detach().numpy()
+                self.best_fits['verts'][frame_id_1] = opt_vertices_1.squeeze(0).cpu().detach().numpy()
+
+                self.countOPT += 1
+        
+        # Replace extreme betas with zero betas
+        opt_beta_0[(opt_beta_0.abs() > 3).any(dim=-1)] = 0.
+        opt_beta_1[(opt_beta_1.abs() > 3).any(dim=-1)] = 0.
+
+        # Assert whether a fit is valid by comparing the joint loss with the threshold
+        valid_fit_0 = (opt_joint_loss_0 < cfg.SMPLIFY.THRESHOLD).to(cfg.DEVICE)
+        valid_fit_1 = (opt_joint_loss_1 < cfg.SMPLIFY.THRESHOLD).to(cfg.DEVICE)
+
+        # add:
+        # keypoints 2d loss, camera loss, smpl loss, vertex loss
+        loss_G_kp2d = 0
         loss_G_cam = 0
-        if self.opt.use_pixmaf:
-            gt_keypoints_2d_0 = other_params['openpose_kp_2d']
-            gt_keypoints_2d_1 = next_other_params['openpose_kp_2d']
-            img_res_0 = int(other_params['bboxes'][0][2])
-            img_res_1 = int(next_other_params['bboxes'][0][2])
-            loss_G_2DKP_0, loss_G_cam_0 = self.criterionPixmaf.get_kp2d_loss(S_0, gt_keypoints_2d_0, 1, img_res_0)
-            loss_G_2DKP_1, loss_G_cam_1 = self.criterionPixmaf.get_kp2d_loss(S_1, gt_keypoints_2d_1, 1, img_res_1)
-            loss_G_2DKP = (loss_G_2DKP_0 + loss_G_2DKP_1)*0.5
+        loss_G_smpl = 0
+        loss_G_verts = 0
+        if self.opt.use_pixmaf:    
+            loss_G_kp2d_0, loss_G_cam_0, loss_G_smpl_0, loss_G_verts_0 = \
+                self.criterionPixmaf.get_losses(S_0, gt_keypoints_2d_0, 1, img_res_0, opt_pose_0, opt_beta_0, opt_vertices_0, valid_fit_0)
+            loss_G_kp2d_1, loss_G_cam_1, loss_G_smpl_1, loss_G_verts_1 = \
+                self.criterionPixmaf.get_losses(S_1, gt_keypoints_2d_1, 1, img_res_1, opt_pose_1, opt_beta_1, opt_vertices_1, valid_fit_1)
+            loss_G_kp2d = (loss_G_kp2d_0 + loss_G_kp2d_1)*0.5
             loss_G_cam = (loss_G_cam_0 + loss_G_cam_1)*0.5
+            loss_G_smpl = (loss_G_smpl_0 + loss_G_smpl_1)*0.5
+            loss_G_verts = (loss_G_verts_0 + loss_G_verts_1)*0.5
 
         # 加入silhouette loss
         loss_G_silhouette = 0
-        if self.opt.use_pixmaf:      
+        if self.opt.use_pixmaf and  self.opt.use_silhouette:
             # 计算剪影loss
             silhouette_loss0 = 0
             silhouette_loss1 = 0
-            for smpl_out in S_0:
-                silhouette_loss0 += self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),smpl_out)
-            for smpl_out in S_1:
-                silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),smpl_out)
-            loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5  
-
+            # for smpl_out_0 in S_0:
+            #     silhouette_loss0 += self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),smpl_out_0)
+            # for smpl_out_1 in S_1:
+            #     silhouette_loss1 += self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),smpl_out_1)
+            
+            smpl_out_0 = S_0[-1]
+            silhouette_loss0 = self.criterionPixmaf.get_silhouette_loss(other_params['silhouette'].squeeze(0),smpl_out_0)
+            smpl_out_1 = S_1[-1]
+            silhouette_loss1 = self.criterionPixmaf.get_silhouette_loss(next_other_params['silhouette'].squeeze(0),smpl_out_1)
+            loss_G_silhouette = (silhouette_loss0+silhouette_loss1)*0.5     
+        
+        # 加入beta一致loss
+        loss_G_shapeCoherence = 0
+        if self.opt.use_pixmaf and self.opt.use_shapeCoherence:  
+            loss_G_shapeCoherence = self.criterionPixmaf.get_betas_coherence_loss(S_0[-1]['pred_shape'],S_1[-1]['pred_shape'])
+        
         # 加入motion_discriminator
         loss_G_motion = 0
         loss_D_motion = 0
@@ -369,9 +540,9 @@ class Pix2PixHDModel(BaseModel):
             pred_motion = torch.cat((S_0[-1]['theta'],S_1[-1]['theta']),dim=0).unsqueeze(0)
             loss_G_motion, loss_D_motion = self.criterionPixmaf.get_motion_disc_loss(pred_motion, self.netDmotion, data_motion_mosh)
 
-
         # Only return the fake_B image if necessary to save BW
-        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_2DKP, loss_G_cam, loss_G_silhouette, loss_G_motion,\
+        return [ [ loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_kp2d, loss_G_cam, loss_G_smpl, loss_G_verts, \
+                    loss_G_silhouette, loss_G_motion, loss_G_shapeCoherence,\
                     loss_D_real, loss_D_fake, loss_D_motion,\
                     loss_G_GAN_face, loss_D_real_face,  loss_D_fake_face], \
                         None if not infer else [torch.cat((I_0, I_1), dim=3), fake_face, face_residual, initial_I_0, \
@@ -415,6 +586,7 @@ class Pix2PixHDModel(BaseModel):
     def save(self, which_epoch):
         self.save_network(self.netG, 'G', which_epoch, self.gpu_ids)
         self.save_network(self.netD, 'D', which_epoch, self.gpu_ids)
+        self.save_network(self.netDmotion, 'Dmotion', which_epoch, self.gpu_ids)
         if self.opt.face_discrim:
              self.save_network(self.netDface, 'Dface', which_epoch, self.gpu_ids)
         if self.opt.face_generator:
@@ -434,11 +606,26 @@ class Pix2PixHDModel(BaseModel):
         print('------------ Now also finetuning multiscale discriminator -----------')
 
     def update_learning_rate(self):
+        '''
         lrd = self.opt.lr / self.opt.niter_decay
         lr = self.old_lr - lrd        
-        for param_group in self.optimizer_D.param_groups:
-            param_group['lr'] = lr
         for param_group in self.optimizer_G.param_groups:
+            param_group['lr'] = lr  
+        for param_group in self.optimizer_D.param_groups:
             param_group['lr'] = lr
         print('update learning rate: %f -> %f' % (self.old_lr, lr))
         self.old_lr = lr
+        '''
+        # 修改为变成0.1倍
+        for param_group in self.optimizer_G.param_groups:
+            old_lr = param_group['lr']
+            param_group['lr'] = param_group['lr'] * self.opt.lr_factor
+            print('update optimizer_G learning rate: %f -> %f' % (old_lr, param_group['lr']))
+        for param_group in self.optimizer_D.param_groups:
+            old_lr = param_group['lr']
+            param_group['lr'] = param_group['lr'] * self.opt.lr_factor
+            print('update optimizer_D learning rate: %f -> %f' % (old_lr, param_group['lr']))
+        for param_group in self.optimizer_D_wo_motion.param_groups:
+            old_lr = param_group['lr']
+            param_group['lr'] = param_group['lr'] * self.opt.lr_factor 
+            print('update optimizer_D_wo_motion learning rate: %f -> %f' % (old_lr, param_group['lr']))

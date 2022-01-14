@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import functools
 import neural_renderer as nr
 from .smpl import SMPL, SMPL_MODEL_DIR, get_smpl_faces
-from ..utils.geometry import perspective_projection
+from ..utils.geometry import perspective_projection,batch_rodrigues
 from ..core.cfgs import cfg
 from ..core import path_config
 from .pred_cam_to_orig_cam import convert_crop_cam_to_orig_img, Renderer
@@ -159,13 +159,14 @@ class Pixmaf_Loss():
         super(Pixmaf_Loss, self).__init__()
         self.device = device
         self.criterion_keypoints = nn.MSELoss(reduction='none').to(self.device)
-        self.kp2d_loss_dict = {}
-        self.cam_loss_dict = {}
+        self.criterion_regr = nn.MSELoss().to(self.device)
+        self.criterion_shape = nn.L1Loss().to(self.device)
+
         self.enc_loss = batch_encoder_disc_l2_loss
         self.dec_loss = batch_adv_disc_l2_loss
 
-    # for openpose
-    def keypoint_loss(self, pred_keypoints_2d, gt_keypoints_2d, openpose_weight=1.0, gt_weight=0.0):
+    # for openpose keypoint 2d
+    def keypoint_loss_25(self, pred_keypoints_2d, gt_keypoints_2d, openpose_weight=1.0):
         """ Compute 2D reprojection loss on the keypoints.
         The loss is weighted by the confidence.
         The available keypoints are different for each dataset.
@@ -177,7 +178,20 @@ class Pixmaf_Loss():
         loss = (conf * self.criterion_keypoints(pred_keypoints_2d, gt_keypoints_2d[:, :, :-1])).mean()
         return loss
 
-    def get_kp2d_loss(self, smpl_outs, gt_keypoints_2d, batch_size, img_res, focal_length = 5000. ,device = 'cuda'):
+    def keypoint_loss_49(self, pred_keypoints_2d, gt_keypoints_2d, openpose_weight=1.0):
+        conf = gt_keypoints_2d[:, :, -1].unsqueeze(-1).clone()
+        conf[:, :25] *= openpose_weight
+        loss = (conf * self.criterion_keypoints(pred_keypoints_2d, gt_keypoints_2d[:, :, :-1])).mean()
+        return loss
+
+    def get_losses(self, smpl_outs, gt_keypoints_2d, batch_size, img_res, \
+                        opt_pose, opt_betas, opt_vertices, valid_fit, \
+                        focal_length = 5000. ,device = 'cuda'):
+        # loss dict     
+        kp2d_loss_dict = {}
+        cam_loss_dict = {}
+        smpl_loss_dict = {}
+        verts_loss_dict = {}
         smpl = SMPL(SMPL_MODEL_DIR, batch_size=batch_size, create_transl=False).to(device)
         len_loop = len(smpl_outs) # 5
         for l_i in range(len_loop):
@@ -206,20 +220,56 @@ class Pixmaf_Loss():
                                                     focal_length=focal_length,
                                                     camera_center=camera_center)
             # Normalize keypoints to [-1,1]
-            pred_keypoints_2d = pred_keypoints_2d / (img_res / 2.)   
+            pred_keypoints_2d = pred_keypoints_2d / (img_res / 2.)   # 49 joints
 
-            loss_keypoints = self.keypoint_loss(pred_keypoints_2d, gt_keypoints_2d) * cfg.LOSS.KP_2D_W
-            self.kp2d_loss_dict['loss_keypoints_{}'.format(l_i)] = loss_keypoints
-
-            # Camera
+            # KP2D loss
+            loss_keypoints = self.keypoint_loss_49(pred_keypoints_2d, gt_keypoints_2d) * cfg.LOSS.KP_2D_W
+            kp2d_loss_dict['loss_keypoints_{}'.format(l_i)] = loss_keypoints
+            
+            # Camera loss
             # force the network to predict positive depth values
             loss_cam = ((torch.exp(-pred_camera[:,0]*10)) ** 2 ).mean()
-            self.cam_loss_dict['loss_cam_{}'.format(l_i)] = loss_cam
+            cam_loss_dict['loss_cam_{}'.format(l_i)] = loss_cam
 
-        kp2d_loss = torch.stack(list(self.kp2d_loss_dict.values())).sum()
-        cam_loss = torch.stack(list(self.cam_loss_dict.values())).sum()
+            # SMPL loss
+            loss_regr_pose, loss_regr_betas = self.smpl_losses(pred_rotmat, pred_betas, opt_pose, opt_betas, valid_fit)
+            loss_regr_pose *= cfg.LOSS.POSE_W
+            loss_regr_betas *= cfg.LOSS.SHAPE_W
+            smpl_loss_dict['loss_regr_pose_{}'.format(l_i)] = loss_regr_pose
+            smpl_loss_dict['loss_regr_betas_{}'.format(l_i)] = loss_regr_betas
 
-        return kp2d_loss, cam_loss
+            # Per-vertex loss for the shape
+            loss_shape = self.shape_loss(pred_vertices, opt_vertices, valid_fit) * cfg.LOSS.VERT_W
+            verts_loss_dict['loss_shape_{}'.format(l_i)] = loss_shape
+
+        kp2d_loss = torch.stack(list(kp2d_loss_dict.values())).sum()
+        cam_loss = torch.stack(list(cam_loss_dict.values())).sum()
+        smpl_loss = torch.stack(list(smpl_loss_dict.values())).sum()
+        verts_loss = torch.stack(list(verts_loss_dict.values())).sum()
+
+        return kp2d_loss, cam_loss, smpl_loss, verts_loss 
+
+    def smpl_losses(self, pred_rotmat, pred_betas, opt_pose, opt_betas, valid_fit):
+        pred_rotmat_valid = pred_rotmat[valid_fit == 1]
+        opt_rotmat_valid = batch_rodrigues(opt_pose.view(-1,3)).view(-1, 24, 3, 3)[valid_fit == 1]
+        pred_betas_valid = pred_betas[valid_fit == 1]
+        opt_betas_valid = opt_betas[valid_fit == 1]
+        if len(pred_rotmat_valid) > 0:
+            loss_regr_pose = self.criterion_regr(pred_rotmat_valid, opt_rotmat_valid)
+            loss_regr_betas = self.criterion_regr(pred_betas_valid, opt_betas_valid)
+        else:
+            loss_regr_pose = torch.FloatTensor(1).fill_(0.).to(self.device)
+            loss_regr_betas = torch.FloatTensor(1).fill_(0.).to(self.device)
+        return loss_regr_pose, loss_regr_betas
+
+    def shape_loss(self, pred_vertices, opt_vertices, valid_fit):
+        """Compute per-vertex loss on the shape for the examples that SMPL annotations are available."""
+        pred_vertices_with_shape = pred_vertices[valid_fit]
+        opt_vertices_with_shape = opt_vertices[valid_fit]
+        if len(opt_vertices_with_shape) > 0:
+            return self.criterion_shape(pred_vertices_with_shape, opt_vertices_with_shape)
+        else:
+            return torch.FloatTensor(1).fill_(0.).to(self.device)
 
     # for motion_discriminator
     def get_motion_disc_loss(self, pred_motion, motion_discriminator, data_motion_mosh):
@@ -237,7 +287,15 @@ class Pixmaf_Loss():
         d_motion_disc_loss = d_motion_disc_loss * cfg.LOSS.D_MOTION_LOSS_W
 
         return g_motion_disc_loss, d_motion_disc_loss
+    
+    # for two continues smpl shapes
+    def get_betas_coherence_loss(self, first_betas, second_betas):
+        try:
+            loss_coh_betas = self.criterion_regr(first_betas, second_betas) * cfg.LOSS.SHAPE_COHERENCE_W
 
+        except:
+            loss_coh_betas = torch.FloatTensor(1).fill_(0.).to(self.device)
+        return loss_coh_betas
 
     # for silhouette 考虑crop_res = 384
     def get_silhouette_loss(self, crop_img, smpl_out, crop_res=384, batch_size=1, device='cuda'):
@@ -272,24 +330,26 @@ class Pixmaf_Loss():
                 try:    
                     l1 += self._caldist_l1(diff_index[i].float(),silhouettes_img_index.float())
                 except:
-                    print('------------------SIL L1 ERROR------------------')
-                    print('a: ',a)
-                    print('b: ',b)
-                    print('diff_index[i]: ',diff_index[i].float())
-                    print('silhouettes_img_index: ',silhouettes_img_index.shape)
-                    print('-----------------------END-----------------------')
+                    # print('------------------SIL L1 ERROR------------------')
+                    # print('a: ',a)
+                    # print('b: ',b)
+                    # print('diff_index[i]: ',diff_index[i].float())
+                    # print('silhouettes_img_index: ',silhouettes_img_index.shape)
+                    # print('-----------------------END-----------------------')
+                    break
         
             # 点在2上
             elif a==0 and b!= 0:
                 try:
                     l2_squared += self._caldist_squared_l2(diff_index[i].float(),crop_img_index.float())
                 except:
-                    print('------------------SIL L2 ERROR------------------')
-                    print('a: ',a)
-                    print('b: ',b)
-                    print('diff_index[i]: ',diff_index[i].float())
-                    print('crop_img_index: ',crop_img_index.shape)
-                    print('-----------------------END-----------------------')
+                    # print('------------------SIL L2 ERROR------------------')
+                    # print('a: ',a)
+                    # print('b: ',b)
+                    # print('diff_index[i]: ',diff_index[i].float())
+                    # print('crop_img_index: ',crop_img_index.shape)
+                    # print('-----------------------END-----------------------')
+                    break
 
             else:
                 print('Error')
@@ -396,7 +456,7 @@ def render_smpl(smpl_output, bboxes, imgs, orig_width=512, orig_height=256):
                     imgs[0],
                     pred_vertices[0],
                     cam=orig_cam[0],
-                    color=(0,255,0),
+                    #color=(0,255,0),
                     mesh_filename=mesh_filename,
                 )
 
@@ -404,7 +464,7 @@ def render_smpl(smpl_output, bboxes, imgs, orig_width=512, orig_height=256):
                     imgs[1],
                     pred_vertices[1],
                     cam=orig_cam[1],
-                    color=(0,255,0),
+                    #color=(0,255,0),
                     mesh_filename=mesh_filename,
                 )
    
