@@ -22,12 +22,12 @@ VIBE_DB_DIR = '/repos/vibe/VIBE/data/vibe_db'
 
 # Configuration variables
 cfg = CN(new_allowed=True)
-
 cfg.DEVICE = 'cuda'
-cfg.NUM_WORKERS= 2
-
+#cfg.NUM_WORKERS= 8
 cfg.TRAIN = CN(new_allowed=True)
-cfg.TRAIN.BATCH_SIZE= 1
+cfg.TRAIN.DEBUG= False
+#cfg.TRAIN.BATCH_SIZE= 1
+
 
 # <====== motion discriminator optimizer
 cfg.TRAIN.MOT_DISCR = CN()

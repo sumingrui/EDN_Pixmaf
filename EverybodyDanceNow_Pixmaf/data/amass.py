@@ -43,11 +43,10 @@ def split_into_chunks(vid_names, seqlen, stride):
     return video_start_end_indices
 
 class AMASS(Dataset):
-    def __init__(self, seqlen):
+    def __init__(self, seqlen, debug):
         self.seqlen = seqlen
-
         self.stride = seqlen
-
+        self.debug = debug
         self.db = self.load_db()
         self.vid_indices = split_into_chunks(self.db['vid_name'], self.seqlen, self.stride)
         del self.db['vid_name']
@@ -60,8 +59,10 @@ class AMASS(Dataset):
         return self.get_single_item(index)
 
     def load_db(self):
-        db_file = osp.join(VIBE_DB_DIR, 'amass_db_ori.pt')
-        # db_file = osp.join(VIBE_DB_DIR, 'amass_db.pt')
+        if not self.debug:
+            db_file = osp.join(VIBE_DB_DIR, 'amass_db_ori.pt')
+        else:
+            db_file = osp.join(VIBE_DB_DIR, 'amass_db_debug.pt')
         db = joblib.load(db_file)
         return db
 

@@ -373,7 +373,8 @@ class Pix2PixHDModel(BaseModel):
         # 开始pixMAF相关的loss的训练
 
         # 从best_fits.pkl获得opt数据用于训练
-        blank_keypoints_2d = torch.zeros((1,24,3)).to(cfg.DEVICE)
+        
+        blank_keypoints_2d = torch.zeros((self.opt.batchSize,24,3)).to(cfg.DEVICE)
         gt_keypoints_2d_0 = torch.cat((other_params['openpose_kp_2d'],blank_keypoints_2d),dim=1) # torch.Size([1, 25, 3]) + torch.Size([1, 24, 3])
         gt_keypoints_2d_1 = torch.cat((next_other_params['openpose_kp_2d'],blank_keypoints_2d),dim=1)
         # gt_keypoints_2d_0 = other_params['openpose_kp_2d'] 
@@ -503,9 +504,9 @@ class Pix2PixHDModel(BaseModel):
         loss_G_verts = 0
         if self.opt.use_pixmaf:    
             loss_G_kp2d_0, loss_G_cam_0, loss_G_smpl_0, loss_G_verts_0 = \
-                self.criterionPixmaf.get_losses(S_0, gt_keypoints_2d_0, 1, img_res_0, opt_pose_0, opt_beta_0, opt_vertices_0, valid_fit_0)
+                self.criterionPixmaf.get_losses(S_0, gt_keypoints_2d_0, self.opt.batchSize, img_res_0, opt_pose_0, opt_beta_0, opt_vertices_0, valid_fit_0)
             loss_G_kp2d_1, loss_G_cam_1, loss_G_smpl_1, loss_G_verts_1 = \
-                self.criterionPixmaf.get_losses(S_1, gt_keypoints_2d_1, 1, img_res_1, opt_pose_1, opt_beta_1, opt_vertices_1, valid_fit_1)
+                self.criterionPixmaf.get_losses(S_1, gt_keypoints_2d_1, self.opt.batchSize, img_res_1, opt_pose_1, opt_beta_1, opt_vertices_1, valid_fit_1)
             loss_G_kp2d = (loss_G_kp2d_0 + loss_G_kp2d_1)*0.5
             loss_G_cam = (loss_G_cam_0 + loss_G_cam_1)*0.5
             loss_G_smpl = (loss_G_smpl_0 + loss_G_smpl_1)*0.5

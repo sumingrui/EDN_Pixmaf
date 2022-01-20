@@ -43,7 +43,10 @@ class AlignedDataset(BaseDataset):
 
         self.dataset_size = len(self.label_paths) 
       
-    def __getitem__(self, index):        
+    def __getitem__(self, index):  
+        if index == (len(self) - 1):
+            print('skip last image.')
+            index =  random.randint(0,len(self) - 2)          
         ### label maps
         paths = self.label_paths
         label_path = paths[index]              
@@ -107,12 +110,12 @@ class AlignedDataset(BaseDataset):
                 next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([0.5, 0.5, 0.55, 0.55])) #(4,)
 
                 # ununsed
-                next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] #(3,)
+                next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] 
                 next_other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index+1]
-                next_other_params['pose'] = self.vibe_results[1]['pose'][index+1] #(72,)
-                next_other_params['betas'] = self.vibe_results[1]['betas'][index+1] #(10,)
-                next_other_params['verts'] = self.vibe_results[1]['verts'][index+1] #(6890, 3)
-                next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index+1] #(49, 3)
+                next_other_params['pose'] = self.vibe_results[1]['pose'][index+1] 
+                next_other_params['betas'] = self.vibe_results[1]['betas'][index+1] 
+                next_other_params['verts'] = self.vibe_results[1]['verts'][index+1] 
+                next_other_params['joints3d'] = self.vibe_results[1]['joints3d'][index+1] 
                 next_other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index+1]
                 next_other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index+1]
 

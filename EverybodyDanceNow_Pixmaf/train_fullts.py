@@ -1,5 +1,6 @@
 ### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
 ### Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
+from email import utils
 import time
 from collections import OrderedDict
 from options.train_options import TrainOptions
@@ -38,6 +39,7 @@ if opt.debug:
     opt.niter = 1
     opt.niter_decay = 0
     opt.max_dataset_size = 10
+    cfg.TRAIN.DEBUG = True
 
 # model = create_model_fullts(opt)
 # model.train()
@@ -125,6 +127,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                                 'D_real', 'D_fake', 'D_MOTION',\
                                 'G_GANface', 'D_realface', 'D_fakeface']
             '''
+
             loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + loss_dict['D_MOTION'] +\
                         (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
 
@@ -165,7 +168,6 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             ### display output images
             if save_fake:
-            # if total_steps==10:
                 syn = generated[0].data[0]
                 inputs = torch.cat((data['label'], data['next_label']), dim=3)
                 targets = torch.cat((data['image'], data['next_image']), dim=3)
@@ -175,8 +177,10 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 
                 web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
                 img_dir = os.path.join(web_dir, 'images')
-                cv2.imwrite(os.path.join(img_dir, 'human_smpl_0_%d_%d.png'%(epoch,total_steps)), render_img_0)
-                cv2.imwrite(os.path.join(img_dir, 'human_smpl_1_%d_%d.png'%(epoch,total_steps)), render_img_1)
+                util.save_image(render_img_0,os.path.join(img_dir, 'human_smpl_%d_%d_0.png'%(epoch,epoch_iter)))
+                util.save_image(render_img_1,os.path.join(img_dir, 'human_smpl_%d_%d_1.png'%(epoch,epoch_iter)))
+                # cv2.imwrite(os.path.join(img_dir, 'human_smpl_%d_%d_0.png'%(epoch,total_steps)), render_img_0)
+                # cv2.imwrite(os.path.join(img_dir, 'human_smpl_%d_%d_1.png'%(epoch,total_steps)), render_img_1)
 
                 visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
                                            ('synthesized_image', util.tensor2im(syn)),

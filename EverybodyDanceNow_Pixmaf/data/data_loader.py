@@ -14,9 +14,9 @@ def CreateDataLoader(opt,cfg):
 
         motion_disc_loader = DataLoader(
             dataset=motion_disc_db,
-            batch_size=cfg.TRAIN.BATCH_SIZE,
+            batch_size=opt.batchSize,
             shuffle=True,
-            num_workers=cfg.NUM_WORKERS,
+            num_workers=int(opt.nThreads),
         )
         return data_loader, motion_disc_loader
     
