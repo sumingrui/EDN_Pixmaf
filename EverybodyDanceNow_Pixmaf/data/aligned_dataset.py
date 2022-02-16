@@ -14,7 +14,9 @@ import cv2
 class AlignedDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
-        self.root = opt.dataroot    
+        self.root = opt.dataroot
+        # stage决定bbox的大小
+        self.stage = opt.netG     
 
         ### label maps    
         self.dir_label = os.path.join(opt.dataroot, opt.phase + '_label')              
@@ -44,9 +46,9 @@ class AlignedDataset(BaseDataset):
         self.dataset_size = len(self.label_paths) 
       
     def __getitem__(self, index):  
-        if index == (len(self) - 1):
-            print('skip last image.')
-            index =  random.randint(0,len(self) - 2)          
+        # if index == (len(self) - 1):
+        #     print('skip last image.')
+        #     index =  random.randint(0,len(self) - 2)          
         ### label maps
         paths = self.label_paths
         label_path = paths[index]              
@@ -68,15 +70,18 @@ class AlignedDataset(BaseDataset):
 
             # 添加bbox
             # 针对[256,512]，要减半
-            other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([0.5, 0.5, 0.55, 0.55])) # torch.Size([1, 4])
+            if self.stage == 'global':
+                other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([0.5, 0.5, 0.55, 0.55])) # torch.Size([1, 4])
+            elif self.stage == 'local':
+                other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index],np.array([1., 1., 1.1, 1.1])) # torch.Size([1, 4])
 
             # ununsed
             other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index] # torch.Size([1, 3])
             other_params['orig_cam'] = self.vibe_results[1]['orig_cam'][index]
             other_params['pose'] = self.vibe_results[1]['pose'][index] # torch.Size([1, 72])
             other_params['betas'] = self.vibe_results[1]['betas'][index] # torch.Size([1, 10])   
-            other_params['verts'] = self.vibe_results[1]['verts'][index] #(6890, 3)
-            other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] #(49, 3)
+            other_params['verts'] = self.vibe_results[1]['verts'][index] # torch.Size([1, 6890, 3])
+            other_params['joints3d'] = self.vibe_results[1]['joints3d'][index] # torch.Size([1, 49, 3])
             other_params['frame_ids'] = self.vibe_results[1]['frame_ids'][index]
             other_params['kp_2d'] = self.vibe_results[1]['kp_2d'][index]
 
@@ -107,7 +112,10 @@ class AlignedDataset(BaseDataset):
                 next_image = transform_image(image).float()
 
                 # 添加bbox
-                next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([0.5, 0.5, 0.55, 0.55])) #(4,)
+                if self.stage == 'global':
+                    next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([0.5, 0.5, 0.55, 0.55])) # torch.Size([1, 4])
+                elif self.stage == 'local':
+                    next_other_params['bboxes'] = np.multiply(self.vibe_results[1]['bboxes'][index+1],np.array([1., 1., 1.1, 1.1])) # torch.Size([1, 4])
 
                 # ununsed
                 next_other_params['pred_cam'] = self.vibe_results[1]['pred_cam'][index+1] 

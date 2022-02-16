@@ -167,8 +167,6 @@ class PixMAF(nn.Module):
 
         # 特征提取
         # EDN下采样backbone [-1, 1024, 16, 32]
-        # TODO 是否加入pretrained选项
-        # TODO 把参数放到init中去
         self.feature_extractor = Down_Sampling(input_nc=6, ngf=64, n_downsampling=4, n_blocks=9)
 
         # deconv layers
@@ -235,9 +233,8 @@ class PixMAF(nn.Module):
         '''
 
         # 修改成不需要grid_sample的过程
-        from math import floor
-        h = 256
-        w = 512
+        # bbox (4,)
+        from math import floor  
 
         x1 = bbox[0]-bbox[2]/2
         y1 = bbox[1]-bbox[2]/2
@@ -245,6 +242,8 @@ class PixMAF(nn.Module):
         y2 = bbox[1]+bbox[2]/2
 
         if stage == 'global':
+            h = 256
+            w = 512
             h_f = 32
             w_f = 64
 

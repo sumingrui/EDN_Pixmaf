@@ -102,6 +102,7 @@ class Pix2PixHDModel(BaseModel):
             self.load_network(self.netG, 'G', opt.which_epoch, pretrained_path)            
             if self.isTrain:
                 self.load_network(self.netD, 'D', opt.which_epoch, pretrained_path)
+                self.load_network(self.netDmotion, 'Dmotion', opt.which_epoch, pretrained_path)
                 if opt.face_discrim:
                     self.load_network(self.netDface, 'Dface', opt.which_epoch, pretrained_path)
             if opt.face_generator:

@@ -10,7 +10,7 @@ def CreateDataLoader(opt,cfg):
 
     # ===== Motion Discriminator dataset =====
     if opt.use_pixmaf:  
-        motion_disc_db = AMASS(seqlen=cfg.DATASET.SEQLEN)
+        motion_disc_db = AMASS(seqlen=cfg.DATASET.SEQLEN, debug=cfg.TRAIN.DEBUG)
 
         motion_disc_loader = DataLoader(
             dataset=motion_disc_db,

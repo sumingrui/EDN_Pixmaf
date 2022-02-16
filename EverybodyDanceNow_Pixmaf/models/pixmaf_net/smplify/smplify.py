@@ -24,7 +24,8 @@ class SMPLify():
         self.step_size = step_size
 
         # Ignore the the following joints for the fitting process
-        ign_joints = ['OP Neck', 'OP RHip', 'OP LHip', 'Right Hip', 'Left Hip']
+        # ign_joints = ['OP Neck', 'OP RHip', 'OP LHip', 'Right Hip', 'Left Hip']
+        ign_joints = [ 'Right Hip', 'Left Hip']
         self.ign_joints = [constants.JOINT_IDS[i] for i in ign_joints]
         self.num_iters = num_iters
         # GMM pose prior

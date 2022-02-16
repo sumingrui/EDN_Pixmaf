@@ -1,6 +1,5 @@
 ### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
 ### Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
-from email import utils
 import time
 from collections import OrderedDict
 from options.train_options import TrainOptions
@@ -68,6 +67,14 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
     for i, data in enumerate(dataset, start=epoch_iter):
+        '''
+        batch_size = 4
+        print(data['other_params']['frame_ids'])
+        print(data['next_other_params']['frame_ids'])
+        tensor([18527, 17760,  9416,  6203])
+        tensor([18528, 17761,  9417,  6204])
+        '''
+
         iter_start_time = time.time()
         total_steps += opt.batchSize
         epoch_iter += opt.batchSize
@@ -85,17 +92,25 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         temp_pose = additional_data['pose']
         temp_betas = additional_data['betas']
         temp_opkp = additional_data['openpose_kp_2d']
+        temp_verts = additional_data['verts']
+        temp_j3d = additional_data['joints3d']
 
         print(temp_bboxes.shape)
         print(temp_cam.shape)
         print(temp_pose.shape)
         print(temp_betas.shape)
         print(temp_opkp.shape)
+        print(temp_verts.shape)
+        print(temp_j3d.shape)
+        exit()
+        
         torch.Size([1, 4])
         torch.Size([1, 3])
         torch.Size([1, 72])
         torch.Size([1, 10])
         torch.Size([1, 25, 3])
+        torch.Size([1, 6890, 3])
+        torch.Size([1, 49, 3])
         '''
 
         if opt.use_pixmaf:  
@@ -142,7 +157,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             model.module.optimizer_G.step()
 
             # update discriminator weights
-            if total_steps % cfg.TRAIN.MOT_DISCR.UPDATESTEPS == 0:
+            if total_steps % cfg.TRAIN.MOT_DISCR.UPDATE_STEPS == 0:
                 model.module.optimizer_D.zero_grad()
                 loss_D.backward()
                 model.module.optimizer_D.step()
